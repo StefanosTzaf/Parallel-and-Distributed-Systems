@@ -1,0 +1,12 @@
+# ignore everything except for...
+*
+!*/
+
+# Εκτός από τα παρακάτω
+!*.c
+!*.h
+!*.mk
+!*.md
+!Makefile
+!.gitignore
+!.vscode/*.json
