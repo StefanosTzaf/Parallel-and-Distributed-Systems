@@ -20,6 +20,7 @@ $(TARGET2): 1_2.o
 run2:
 	./$(TARGET2) 2 20 1   
 	./$(TARGET2) 2 20 2
+	./$(TARGET2) 2 20 3
 
 
 clean:

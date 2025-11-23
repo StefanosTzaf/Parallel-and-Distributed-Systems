@@ -118,6 +118,14 @@ void* threadFunc_rwlock(void* arg){
 }
 
 void* threadFunc_atomic(void* arg){
+    int iters = *(int*)arg;
 
+    for(int i = 0; i < iters; i++){
+        
+        // memory order relaxed since we do not care about the order of the threads
+        __atomic_add_fetch(&sharedVar, 1, __ATOMIC_RELAXED);
+        printf("in thread %ld with sharedVal: %d\n", pthread_self(), sharedVar);
+    }
     pthread_exit(NULL);
+
 }
