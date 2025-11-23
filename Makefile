@@ -16,8 +16,11 @@ $(TARGET2): 1_2.o
 	$(CC) $(CFLAGS) -o $(TARGET2) $(OBJ2)
 
 # Run targets with example arguments
+#2 threads, 20 iterations, mutex/rwlock/atomic
 run2:
-	./$(TARGET2) 3 3 2
+	./$(TARGET2) 2 20 1   
+	./$(TARGET2) 2 20 2
+
 
 clean:
 	rm -f $(TARGET1) $(OBJ1) $(TARGET2) $(OBJ2)
