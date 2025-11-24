@@ -28,7 +28,7 @@ run2:
 	./$(TARGET2) 4 10000 3
 
 run3:
-	./$(TARGET3) 10000
+	./$(TARGET3) 1000000
 
 
 clean:

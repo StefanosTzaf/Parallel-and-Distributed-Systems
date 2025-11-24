@@ -4,7 +4,6 @@
 #include <time.h>
 #include <stdbool.h>
 #include <string.h>
-#include <time.h>
 
 #define perror2(s, e) fprintf(stderr ,"%s: %s\n", s, strerror(e))
 
