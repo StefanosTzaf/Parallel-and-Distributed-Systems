@@ -18,9 +18,9 @@ $(TARGET2): 1_2.o
 # Run targets with example arguments
 #2 threads, 20 iterations, mutex/rwlock/atomic
 run2:
-	./$(TARGET2) 2 20 1   
-	./$(TARGET2) 2 20 2
-	./$(TARGET2) 2 20 3
+	./$(TARGET2) 4 10000 1   
+	./$(TARGET2) 4 10000 2
+	./$(TARGET2) 4 10000 3
 
 
 clean:

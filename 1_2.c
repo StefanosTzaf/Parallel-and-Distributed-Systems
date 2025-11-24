@@ -4,6 +4,7 @@
 #include <time.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
 
 #define perror2(s, e) fprintf(stderr ,"%s: %s\n", s, strerror(e))
 
@@ -25,9 +26,9 @@ int main(int argc, char* argv[]){
     
     sharedVar = 0;
     
-    int threadsNum = atoi(argv[1]);
-    int numOfIter = atoi(argv[2]);
-    int algorithm = atoi(argv[3]);
+    int threadsNum = atoi(argv[1]); // number of threads
+    int numOfIter = atoi(argv[2]); // number of iterations for each thread
+    int algorithm = atoi(argv[3]); // 1: mutex, 2: rwlock, 3: atomic
 
     pthread_t* threads = malloc(threadsNum*sizeof(pthread_t));
 
@@ -53,6 +54,8 @@ int main(int argc, char* argv[]){
             exit(1);
     }
     
+    struct timespec start, end;
+    clock_gettime(CLOCK_REALTIME, &start);
 
     int err, status;
     for(int i = 0; i < threadsNum; i++){
@@ -68,6 +71,12 @@ int main(int argc, char* argv[]){
             exit(1);
         }
     }
+
+    clock_gettime(CLOCK_REALTIME, &end);
+    // Calculate total time taken, take into account nanoseconds as well
+    double totalTime = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    printf("Final value of sharedVar: %d\n", sharedVar);
+    printf("Time: %f seconds\n", totalTime);
 
     switch (algorithm){
         case 1:
@@ -94,7 +103,7 @@ void* threadFunc_mutex(void* arg){
     for(int i = 0; i < iters; i++){
         pthread_mutex_lock(&mutex);
         sharedVar++;
-        printf("in thread %ld with sharedVal: %d\n", pthread_self(), sharedVar);
+        // printf("in thread %ld with sharedVal: %d\n", pthread_self(), sharedVar);
         pthread_mutex_unlock(&mutex);
     }
     pthread_exit(NULL);
@@ -111,7 +120,7 @@ void* threadFunc_rwlock(void* arg){
         
         // read lock for printing only
         pthread_rwlock_rdlock(&rwlock);
-        printf("in thread %ld with sharedVal: %d\n", pthread_self(), sharedVar);
+        // printf("in thread %ld with sharedVal: %d\n", pthread_self(), sharedVar);
         pthread_rwlock_unlock(&rwlock);
     }
     pthread_exit(NULL);
@@ -124,7 +133,7 @@ void* threadFunc_atomic(void* arg){
         
         // memory order relaxed since we do not care about the order of the threads
         __atomic_add_fetch(&sharedVar, 1, __ATOMIC_RELAXED);
-        printf("in thread %ld with sharedVal: %d\n", pthread_self(), sharedVar);
+        // printf("in thread %ld with sharedVal: %d\n", pthread_self(), sharedVar);
     }
     pthread_exit(NULL);
 
