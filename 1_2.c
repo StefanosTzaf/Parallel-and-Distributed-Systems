@@ -8,7 +8,6 @@
 
 #define perror2(s, e) fprintf(stderr ,"%s: %s\n", s, strerror(e))
 
-
 int sharedVar;
 pthread_mutex_t mutex;
 pthread_rwlock_t rwlock;
