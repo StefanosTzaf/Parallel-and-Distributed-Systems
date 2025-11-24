@@ -36,6 +36,10 @@ int main(int argc, char* argv[]){
 
     int sizeOfArray = atoi(argv[1]);
 
+    // time needed to create and initialize arrays and structs
+    struct timespec arrayInitStart, arrayInitEnd;
+    clock_gettime(CLOCK_REALTIME, &arrayInitStart);
+
     int* arrays[4]; 
     for(int i = 0; i < 4; i++){
         arrays[i] = malloc(sizeOfArray * sizeof(int)); // memory for each array
@@ -58,27 +62,41 @@ int main(int argc, char* argv[]){
         args[i]->arrayIndex = i;
     }
 
-    //###### serial execution ######//
+    clock_gettime(CLOCK_REALTIME, &arrayInitEnd);
+    double arrayInitTime = (arrayInitEnd.tv_sec - arrayInitStart.tv_sec) + 
+        (arrayInitEnd.tv_nsec - arrayInitStart.tv_nsec) / 1e9;
+    printf("Array Initialization Time: %f seconds\n\n", arrayInitTime);
+
+
+
+    //######## serial execution ########//
     struct timespec start, end;
     clock_gettime(CLOCK_REALTIME, &start);
     
-    for(int i = 0; i < 4; i++){
+    for(int i = 0; i < 4; i++){ // call serial algorithm on each array
         serialAlgorithm(arrays[i], sizeOfArray, i);
     }
 
     clock_gettime(CLOCK_REALTIME, &end);
     double serialTime = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
     
-    printf("Serial Execution Time: %f seconds\n", serialTime);
-    printStats();
-
-    // ##### parallel execution ######//
-
+    printf("Serial Execution Time: %f seconds\n\n", serialTime);
+    
+    
+    // store stats for serial execution in temporary variables
+    long long int temp_array_0 = array_stats.info_array_0;
+    long long int temp_array_1 =  array_stats.info_array_1;;
+    long long int temp_array_2 =  array_stats.info_array_2;;
+    long long int temp_array_3 =  array_stats.info_array_3;
+    
     // reset stats
     array_stats.info_array_0 = 0;
     array_stats.info_array_1 = 0;
     array_stats.info_array_2 = 0;
     array_stats.info_array_3 = 0;
+   
+   
+    // ##### parallel execution ######//
 
     int numOfThreads = 4;
     pthread_t* threads = malloc(numOfThreads * sizeof(pthread_t));
@@ -104,9 +122,21 @@ int main(int argc, char* argv[]){
     clock_gettime(CLOCK_REALTIME, &end);
     double parallelTime = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
 
-    printf("Parallel Execution Time: %f seconds\n", parallelTime);
-    printStats();
+    printf("Parallel Execution Time: %f seconds\n\n", parallelTime);
+
+    // verify that serial and parallel results are the same
+    if(temp_array_0 == array_stats.info_array_0 &&
+       temp_array_1 == array_stats.info_array_1 &&
+       temp_array_2 == array_stats.info_array_2 &&
+       temp_array_3 == array_stats.info_array_3){
+        
+        printf("Verification Successful: Serial and Parallel results match!\n\n");
+    } 
+    else{
+        printf("Verification Failed: Serial and Parallel results do not match!\n\n");
+    }
     
+    // free allocated memory
     for(int i = 0; i < 4; i++){
         free(args[i]);
         free(arrays[i]);

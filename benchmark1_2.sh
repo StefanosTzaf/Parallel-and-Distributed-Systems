@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./benchmark.sh [iterations]
+# Usage: ./benchmark1_2.sh [iterations]
 
 ITERS=10000
 if [ $# -eq 1 ]; then
