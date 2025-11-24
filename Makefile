@@ -4,12 +4,13 @@ CFLAGS = -Wall -g -pthread
 OBJ1 = 1_1.o 
 OBJ2 = 1_2.o
 OBJ3 = 1_3.o
+OBJ4 = 1_4.o
 
 TARGET1 = 1_1
 TARGET2 = 1_2
 TARGET3 = 1_3
-
-all: $(TARGET1) $(TARGET2) $(TARGET3)
+TARGET4 = 1_4
+all: $(TARGET1) $(TARGET2) $(TARGET3) $(TARGET4)
 
 $(TARGET1): 1_1.o
 	$(CC) $(CFLAGS) -o $(TARGET1) $(OBJ1)
@@ -19,6 +20,9 @@ $(TARGET2): 1_2.o
 
 $(TARGET3): 1_3.o
 	$(CC) $(CFLAGS) -o $(TARGET3) $(OBJ3)
+
+$(TARGET4): 1_4.o
+	$(CC) $(CFLAGS) -o $(TARGET4) $(OBJ4)
 
 # Run targets with example arguments
 #2 threads, 20 iterations, mutex/rwlock/atomic
