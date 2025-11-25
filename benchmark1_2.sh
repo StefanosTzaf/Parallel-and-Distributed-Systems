@@ -2,8 +2,8 @@
 
 # Usage: ./benchmark1_2.sh [iterations] [runs]
 
-ITERS=1000000
-RUNS=10  # default number of times to run each test
+ITERS=10000000 # 10^7 
+RUNS=5  # default number of times to run each test
 if [ $# -eq 2 ]; then
     ITERS=$1
     RUNS=$2

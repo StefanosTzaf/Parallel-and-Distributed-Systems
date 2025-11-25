@@ -1,9 +1,0 @@
-Compiling...
-make: Nothing to be done for 'all'.
-
-Running with array size 1000000 (average of 10 runs)
-
-for array size 1000000:
-Average Serial Execution Time: .012922 seconds
-Average Parallel Execution Time: .014706 seconds
-

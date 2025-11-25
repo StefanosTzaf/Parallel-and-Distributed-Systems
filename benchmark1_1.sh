@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Benchmark script for 1.1
-if [ $# -ne 3 ] && [ $# -ne 4 ]; then
-    echo "Usage: $0 <degree> <threads> <iterations> [output_file]"
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 <degree> <threads> [iterations] [output_file]"
     exit 1
 fi
 
@@ -15,7 +15,7 @@ exec >> 1_1_benchmark_results.txt
 DEGREE=$1
 THREADS=$2
 ITERATIONS=$3
-OUTPUT_FILE=${4:-"benchmark1_1_results.txt"} #if not provided, default to benchmark1_1_results.txt
+OUTPUT_FILE=${4:-"1_1_benchmark_results2.txt"} #if not provided, default to benchmark1_1_results.txt
 
 make 1_1
 if [ $? -ne 0 ]; then
@@ -29,6 +29,8 @@ echo "Threads: $THREADS" >> "$OUTPUT_FILE"
 echo "Iterations per test: $ITERATIONS" >> "$OUTPUT_FILE"
 echo "========================================" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
+
+echo "Running benchmark: n=$DEGREE, threads=$THREADS, iterations=$ITERATIONS"
 
 serial_sum=0
 parallel_sum=0

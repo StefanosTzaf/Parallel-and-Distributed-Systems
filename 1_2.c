@@ -116,11 +116,7 @@ void* threadFunc_rwlock(void* arg){
         pthread_rwlock_wrlock(&rwlock);
         sharedVar++;
         pthread_rwlock_unlock(&rwlock);
-        
-        // read lock for printing only
-        pthread_rwlock_rdlock(&rwlock);
-        // printf("in thread %ld with sharedVal: %d\n", pthread_self(), sharedVar);
-        pthread_rwlock_unlock(&rwlock);
+    
     }
     pthread_exit(NULL);
 }

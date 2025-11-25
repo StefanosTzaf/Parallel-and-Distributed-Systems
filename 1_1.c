@@ -212,8 +212,8 @@ int main(int argc, char *argv[]){
     printf("Initialization time: %.3f ms\n", init_time);
     printf("Serial algorithm time: %.3f ms\n", serial_time);
     printf("Parallel algorithm time: %.3f ms\n", parallel_time);
-    printf("Speedup: %.2fx\n", speedup);
-    printf("Efficiency: %.2f%%\n", (speedup / threads_num) * 100);
+    printf("Speedup: %.2f x\n", speedup);
+    printf("Efficiency: %.2f %%\n", (speedup / threads_num) * 100);
     
     free(poly1);
     free(poly2);
