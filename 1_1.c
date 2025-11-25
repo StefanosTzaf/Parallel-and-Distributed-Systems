@@ -163,16 +163,20 @@ int main(int argc, char *argv[]){
     // start serial algorithm timing
     clock_gettime(CLOCK_MONOTONIC, &serial_start);
     
-    // Serial Polynomial Multiplication 
-    //for example (4 + 2x)*(3 + 5x) will be calculated as:
-    // result[0] += 4 * 3 = 12 result[1] += 4 * 5 = 20
-    // result[1] += 2 * 3 = 6  (added to previous 20) result[2] += 2 * 5 = 10
-    // so it is no needed to make the addition separately 
-
-    for(int i = 0; i <= degree; i++){
-        for(int j = 0; j <= degree; j++){
-            serial_result[i + j] += (__int128_t)poly1[i] * poly2[j];
+    // Serial Polynomial Multiplication (same algorithm as parallel)
+    for(int k = 0; k < result_size; k++) {
+        __int128_t sum = 0;
+        
+        int i_start = (k - degree) > 0 ? (k - degree) : 0;
+        int i_end = (k < degree) ? k : degree;
+        
+        // For each coefficient k of the result:
+        // We need to add all products poly1[i] * poly2[j] where i+j=k
+        for (int i = i_start; i <= i_end; i++) {
+            sum += (__int128_t)poly1[i] * poly2[k - i];
         }
+        
+        serial_result[k] = sum;
     }
     
     // stop serial algorithm timing

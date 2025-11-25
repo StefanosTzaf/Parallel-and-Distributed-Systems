@@ -15,7 +15,7 @@ exec >> 1_1_benchmark_results2.txt
 
 DEGREE=$1
 THREADS=$2
-RUNS=$3
+RUNS=${3:-5} # default to 5 runs if not provided
 
 make 
 
@@ -62,6 +62,13 @@ for ((i=1; i<=$RUNS; i++)); do
     speedup_sum=$(echo "$speedup_sum + $speedup" | bc) 
     efficiency_sum=$(echo "$efficiency_sum + $efficiency" | bc) 
 
+    correct_results=$(echo "$output" | grep "The results are CORRECT!")
+    if [ -z "$correct_results" ]; then
+        echo "Warning: Results are NOT CORRECT in execution $i!"
+    else
+        echo "Results are CORRECT in execution $i."
+    fi
+
 done
 
 avg_init=$(echo "scale=6; $init_sum / $RUNS" | bc) # division with 6 decimal digits
@@ -71,8 +78,8 @@ avg_speedup=$(echo "scale=6; $speedup_sum / $RUNS" | bc)
 avg_efficiency=$(echo "scale=6; $efficiency_sum / $RUNS" | bc)
 
 echo ""
-echo "Average Initialization time: $avg_init ms"
-echo "Average Serial algorithm time: $avg_serial ms"
-echo "Average Parallel algorithm time: $avg_parallel ms"
+echo "Average Initialization time: $avg_init s"
+echo "Average Serial algorithm time: $avg_serial s"
+echo "Average Parallel algorithm time: $avg_parallel s"
 echo "Average Speedup: $avg_speedup x"
 echo "Average Efficiency: $avg_efficiency %"
