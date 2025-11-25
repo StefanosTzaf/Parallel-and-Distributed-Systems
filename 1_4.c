@@ -98,6 +98,8 @@ void* thread_func(void* arg) {
         }
 
     }
+
+    // COARSE GRAINED RWLOCK
     else if(data->type_of_sync == 3){
         for(int i = 0; i < data->transactions_read; i++){
             int account = rand_r(&seed) % data->number_of_accounts;
@@ -125,6 +127,8 @@ void* thread_func(void* arg) {
             pthread_rwlock_unlock(&coarse_rwlock);
         }
     }
+
+    // FINE GRAINED RWLOCK
     else if(data->type_of_sync == 4){
         for(int i = 0; i < data->transactions_read; i++){
             int account = rand_r(&seed) % data->number_of_accounts;
@@ -172,7 +176,7 @@ void* thread_func(void* arg) {
 int main(int argc, char* argv[]) {
     if(argc != 6){
         fprintf(stderr, "Usage: %s <number_of_accounts> <transactions_per_thread> <percentage_of_read_transactions> <type_of_sync> <number_of_threads>\n", argv[0]);
-        fprintf(stderr, "type_of_sync: mutex_coarse, mutex_fine, rwlock_coarse, rwlock_fine\n");
+        fprintf(stderr, "Type_of_sync: mutex_coarse, mutex_fine, rwlock_coarse, rwlock_fine\n");
         return 1;
     }
   
@@ -189,17 +193,23 @@ int main(int argc, char* argv[]) {
     pthread_mutex_t* fine_mutexes = NULL;
     pthread_rwlock_t* fine_rwlocks = NULL;
 
+
+    // Determine type of synchronization
     char type_of_sync[128];
     for (int i = 0; argv[4][i]; i++) {
         type_of_sync[i] = tolower(argv[4][i]);
     }
+
     type_of_sync[strlen(argv[4])] = '\0';
+
     int type_of_sync_flag;
+
     if(!strcmp(type_of_sync, "mutex_coarse") || !strcmp(type_of_sync, "coarse_mutex")){
         
         type_of_sync_flag = 1;
         pthread_mutex_init(&coarse_mutex, NULL);
     } 
+
     else if(!strcmp(type_of_sync, "mutex_fine") || !strcmp(type_of_sync, "fine_mutex")){
         type_of_sync_flag = 2;
         fine_mutexes = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t) * n);
@@ -211,6 +221,7 @@ int main(int argc, char* argv[]) {
             pthread_mutex_init(&fine_mutexes[i], NULL);
         }
     }
+
     else if(!strcmp(type_of_sync, "rwlock_coarse") || !strcmp(type_of_sync, "coarse_rwlock")){
         type_of_sync_flag = 3;
         pthread_rwlock_init(&coarse_rwlock, NULL);
@@ -249,15 +260,10 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < n; i++){
         account_balances[i] = rand_r(&seed);
         sum_of_balances_initially += account_balances[i];
-        
-
     }
 
     int transactions_read_per_thread = transactions_per_thread * percentage_of_read_transactions / 100;
     int transactions_write_per_thread = transactions_per_thread - transactions_read_per_thread;
-
-
-
 
     pthread_t* threads = (pthread_t*)malloc(number_of_threads * sizeof(pthread_t));
     if(threads == NULL){
@@ -265,32 +271,41 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    
-    for(int i = 0; i < number_of_threads; i++){
-        ThreadData* thread_data = (ThreadData*)malloc(sizeof(ThreadData));
-        if(thread_data == NULL){
-            fprintf(stderr, "Memory allocation failed\n");
-            return 1;
-        }
-        thread_data->transactions_read = transactions_read_per_thread;
-        thread_data->transactions_write = transactions_write_per_thread;
-        thread_data->number_of_accounts = n;
-        thread_data->account_balances = account_balances;
-        thread_data->type_of_sync = type_of_sync_flag;
-        thread_data->fine_mutexes = fine_mutexes;
-        thread_data->fine_rwlocks = fine_rwlocks;
+    ThreadData* thread_data_array = (ThreadData*)malloc(number_of_threads * sizeof(ThreadData));
+    if(thread_data_array == NULL){
+        fprintf(stderr, "Memory allocation failed\n");
+        return 1;
+    }
 
-        if(pthread_create(&threads[i], NULL, thread_func, (void*)thread_data) != 0){
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+
+    for(int i = 0; i < number_of_threads; i++){
+        thread_data_array[i].transactions_read = transactions_read_per_thread;
+        thread_data_array[i].transactions_write = transactions_write_per_thread;
+        thread_data_array[i].number_of_accounts = n;
+        thread_data_array[i].account_balances = account_balances;
+        thread_data_array[i].type_of_sync = type_of_sync_flag;
+        thread_data_array[i].fine_mutexes = fine_mutexes;
+        thread_data_array[i].fine_rwlocks = fine_rwlocks;
+
+        if(pthread_create(&threads[i], NULL, thread_func, (void*)&thread_data_array[i]) != 0){
             fprintf(stderr, "Error creating thread\n");
             return 1;
         }
     }
     
-    
     for(int i = 0; i < number_of_threads; i++){
         pthread_join(threads[i], NULL);
     }
     
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    free(thread_data_array); 
+    
+    double elapsed_time = (end_time.tv_sec - start_time.tv_sec) + 
+                          (end_time.tv_nsec - start_time.tv_nsec) / 1000000000.0;
+    printf("Total time for transactions with %s: %f seconds\n", type_of_sync, elapsed_time);
+
     unsigned long sum_of_balances_finally = 0;
     for(int i = 0; i < n; i++){
         sum_of_balances_finally += account_balances[i];
@@ -298,15 +313,30 @@ int main(int argc, char* argv[]) {
 
     if(sum_of_balances_initially != sum_of_balances_finally){
         fprintf(stderr, "Error: Sum of balances changed! Initial: %lu, Final: %lu\n", sum_of_balances_initially, sum_of_balances_finally);
+        return 1;
     }
-      
 
+    // Clean up
     if(type_of_sync_flag == 1){
         pthread_mutex_destroy(&coarse_mutex);
+    }
+    else if(type_of_sync_flag == 2){
+        for(int i = 0; i < n; i++){
+            pthread_mutex_destroy(&fine_mutexes[i]);
+        }
+        free(fine_mutexes);
+    }
+    else if(type_of_sync_flag == 3){
+        pthread_rwlock_destroy(&coarse_rwlock);
+    }
+    else if(type_of_sync_flag == 4){
+        for(int i = 0; i < n; i++){
+            pthread_rwlock_destroy(&fine_rwlocks[i]);
+        }
+        free(fine_rwlocks);
     }
 
     free(account_balances);
     free(threads);
-
     return 0;
 }
