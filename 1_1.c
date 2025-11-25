@@ -54,10 +54,10 @@ bool verify_results(__int128_t* serial, __int128_t* parallel, int size) {
     return true;
 }
 
-// function to get time difference in milliseconds
-double get_time_ms(struct timespec start, struct timespec end) {
-    return (end.tv_sec - start.tv_sec) * 1000.0 + 
-           (end.tv_nsec - start.tv_nsec) / 1000000.0;
+// function to get time difference in seconds
+double get_time_sec(struct timespec start, struct timespec end) {
+    return (end.tv_sec - start.tv_sec) + 
+           (end.tv_nsec - start.tv_nsec) / 1000000000.0;
 }
 
 
@@ -203,15 +203,15 @@ int main(int argc, char *argv[]){
     }
     
     // Print timings
-    double init_time = get_time_ms(init_start, init_end);
-    double serial_time = get_time_ms(serial_start, serial_end);
-    double parallel_time = get_time_ms(parallel_start, parallel_end);
+    double init_time = get_time_sec(init_start, init_end);
+    double serial_time = get_time_sec(serial_start, serial_end);
+    double parallel_time = get_time_sec(parallel_start, parallel_end);
     double speedup = serial_time / parallel_time;
     
     printf("\n=== Times ===\n");
-    printf("Initialization time: %.3f ms\n", init_time);
-    printf("Serial algorithm time: %.3f ms\n", serial_time);
-    printf("Parallel algorithm time: %.3f ms\n", parallel_time);
+    printf("Initialization time: %.5f s\n", init_time);
+    printf("Serial algorithm time: %.5f s\n", serial_time);
+    printf("Parallel algorithm time: %.5f s\n", parallel_time);
     printf("Speedup: %.2f x\n", speedup);
     printf("Efficiency: %.2f %%\n", (speedup / threads_num) * 100);
     
