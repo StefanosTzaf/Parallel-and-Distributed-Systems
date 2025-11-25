@@ -2,14 +2,15 @@
 
 #!/bin/bash
 
-# Usage: ./benchmark1_3.sh [size of array]
+# Usage: ./benchmark1_3.sh [size of array] [runs]
 
 SIZE=100000 # default size of array: 10^5
-if [ $# -eq 1 ]; then
+RUNS=10  # default number of times to run each test
+if [ $# -eq 2 ]; then
     SIZE=$1
+    RUNS=$2
 fi
 
-RUNS=10  # Number of times to run each test
 
 echo "Compiling..."
 make

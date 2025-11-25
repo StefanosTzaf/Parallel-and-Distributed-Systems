@@ -1,13 +1,14 @@
 #!/bin/bash
 
-# Usage: ./benchmark1_2.sh [iterations]
+# Usage: ./benchmark1_2.sh [iterations] [runs]
 
 ITERS=10000
-if [ $# -eq 1 ]; then
+RUNS=10  # default number of times to run each test
+if [ $# -eq 2 ]; then
     ITERS=$1
+    RUNS=$2
 fi
 
-RUNS=10  # Number of times to run each test
 
 echo "Compiling..."
 make
