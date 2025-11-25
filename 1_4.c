@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 199309L
+#define _XOPEN_SOURCE 700
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -7,7 +8,9 @@
 #include <ctype.h>  
 #include <string.h>
 
+
 pthread_mutex_t coarse_mutex;
+pthread_rwlock_t coarse_rwlock;
 
 typedef struct {
     int transactions_read;
@@ -16,6 +19,7 @@ typedef struct {
     unsigned long* account_balances;
     int type_of_sync;
     pthread_mutex_t* fine_mutexes;
+    pthread_rwlock_t* fine_rwlocks;
 } ThreadData;
 
 
@@ -95,10 +99,66 @@ void* thread_func(void* arg) {
 
     }
     else if(data->type_of_sync == 3){
-
+        for(int i = 0; i < data->transactions_read; i++){
+            int account = rand_r(&seed) % data->number_of_accounts;
+            pthread_rwlock_rdlock(&coarse_rwlock);
+                sum_of_balances_read += data->account_balances[account];
+            pthread_rwlock_unlock(&coarse_rwlock);
+        }
+            
+        // Perform write transactions
+        for(int i = 0; i < data->transactions_write; i++){
+            int account_1 = rand_r(&seed) % data->number_of_accounts;
+            int account_2 = rand_r(&seed) % data->number_of_accounts;
+            if(account_1 == account_2){
+                account_2 = (account_2 + 1) % data->number_of_accounts;
+            }
+            unsigned int amount = rand_r(&seed);
+            // we do not accept negative balances
+            
+            pthread_rwlock_wrlock(&coarse_rwlock);
+                if(amount > data->account_balances[account_1]){
+                    amount = data->account_balances[account_1];
+                }
+                data->account_balances[account_1] -= amount;
+                data->account_balances[account_2] += amount;
+            pthread_rwlock_unlock(&coarse_rwlock);
+        }
     }
     else if(data->type_of_sync == 4){
-
+        for(int i = 0; i < data->transactions_read; i++){
+            int account = rand_r(&seed) % data->number_of_accounts;
+            pthread_rwlock_rdlock(&data->fine_rwlocks[account]);
+                sum_of_balances_read += data->account_balances[account];
+            pthread_rwlock_unlock(&data->fine_rwlocks[account]);
+        }
+            
+        // Perform write transactions
+        for(int i = 0; i < data->transactions_write; i++){
+            int account_1 = rand_r(&seed) % data->number_of_accounts;
+            int account_2 = rand_r(&seed) % data->number_of_accounts;
+            if(account_1 == account_2){
+                account_2 = (account_2 + 1) % data->number_of_accounts;
+            }
+            unsigned int amount = rand_r(&seed);
+            // we do not accept negative balances
+            
+            int first = account_1 < account_2 ? account_1 : account_2;
+            int second = account_1 < account_2 ? account_2 : account_1;
+                        
+            // Lock in a consistent order to prevent deadlocks
+            pthread_rwlock_wrlock(&data->fine_rwlocks[first]);
+            pthread_rwlock_wrlock(&data->fine_rwlocks[second]);
+            
+                if(amount > data->account_balances[account_1]){
+                    amount = data->account_balances[account_1];
+                }
+                data->account_balances[account_1] -= amount;
+                data->account_balances[account_2] += amount;
+            
+            pthread_rwlock_unlock(&data->fine_rwlocks[second]);
+            pthread_rwlock_unlock(&data->fine_rwlocks[first]);
+        }
     }
     else{
         fprintf(stderr, "Invalid synchronization type\n");
@@ -112,6 +172,7 @@ void* thread_func(void* arg) {
 int main(int argc, char* argv[]) {
     if(argc != 6){
         fprintf(stderr, "Usage: %s <number_of_accounts> <transactions_per_thread> <percentage_of_read_transactions> <type_of_sync> <number_of_threads>\n", argv[0]);
+        fprintf(stderr, "type_of_sync: mutex_coarse, mutex_fine, rwlock_coarse, rwlock_fine\n");
         return 1;
     }
   
@@ -126,6 +187,8 @@ int main(int argc, char* argv[]) {
     }
 
     pthread_mutex_t* fine_mutexes = NULL;
+    pthread_rwlock_t* fine_rwlocks = NULL;
+
     char type_of_sync[128];
     for (int i = 0; argv[4][i]; i++) {
         type_of_sync[i] = tolower(argv[4][i]);
@@ -133,6 +196,7 @@ int main(int argc, char* argv[]) {
     type_of_sync[strlen(argv[4])] = '\0';
     int type_of_sync_flag;
     if(!strcmp(type_of_sync, "mutex_coarse") || !strcmp(type_of_sync, "coarse_mutex")){
+        
         type_of_sync_flag = 1;
         pthread_mutex_init(&coarse_mutex, NULL);
     } 
@@ -149,9 +213,19 @@ int main(int argc, char* argv[]) {
     }
     else if(!strcmp(type_of_sync, "rwlock_coarse") || !strcmp(type_of_sync, "coarse_rwlock")){
         type_of_sync_flag = 3;
+        pthread_rwlock_init(&coarse_rwlock, NULL);
     }
+
     else if(!strcmp(type_of_sync, "rwlock_fine") || !strcmp(type_of_sync, "fine_rwlock")){
         type_of_sync_flag = 4;
+        fine_rwlocks = (pthread_rwlock_t*)malloc(sizeof(pthread_rwlock_t) * n);
+        if(fine_rwlocks == NULL){
+            fprintf(stderr, "Memory allocation failed\n");
+            return 1;
+        }
+        for(int i = 0; i < n; i++){
+            pthread_rwlock_init(&fine_rwlocks[i], NULL);
+        }
     }
     else{
         fprintf(stderr, "Invalid type of synchronization method: %s\n", argv[4]);
@@ -204,6 +278,7 @@ int main(int argc, char* argv[]) {
         thread_data->account_balances = account_balances;
         thread_data->type_of_sync = type_of_sync_flag;
         thread_data->fine_mutexes = fine_mutexes;
+        thread_data->fine_rwlocks = fine_rwlocks;
 
         if(pthread_create(&threads[i], NULL, thread_func, (void*)thread_data) != 0){
             fprintf(stderr, "Error creating thread\n");

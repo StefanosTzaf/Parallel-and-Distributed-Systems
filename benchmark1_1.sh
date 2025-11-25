@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Benchmark script for 1.1
-if [ $# -lt 2 ]; then
-    echo "Usage: $0 <degree> <threads> [iterations] [output_file]"
+if [ $# -ne 3 ] && [ $# -ne 4 ]; then
+    echo "Usage: $0 <degree> <threads> <iterations> [output_file]"
     exit 1
 fi
 
@@ -29,8 +29,6 @@ echo "Threads: $THREADS" >> "$OUTPUT_FILE"
 echo "Iterations per test: $ITERATIONS" >> "$OUTPUT_FILE"
 echo "========================================" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
-
-echo "Running benchmark: n=$DEGREE, threads=$THREADS, iterations=$ITERATIONS"
 
 serial_sum=0
 parallel_sum=0
