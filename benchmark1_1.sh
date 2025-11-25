@@ -6,6 +6,12 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
+# clear file for next run
+truncate -s 0 1_1_benchmark_results.txt
+
+# Redirect all output to file
+exec >> 1_1_benchmark_results.txt 
+
 DEGREE=$1
 THREADS=$2
 ITERATIONS=$3
@@ -32,5 +38,5 @@ init_sum=0
 for ((i=1; i<=$ITERATIONS; i++)); do
     echo -e "\n\n\n" >> "$OUTPUT_FILE"
     echo -n "Iteration $i/$ITERATIONS... ">> "$OUTPUT_FILE"
-    ./1_1 $DEGREE $THREADS >> "$OUTPUT_FILE" 2>&1
+    ./build/1_1 $DEGREE $THREADS >> "$OUTPUT_FILE" 2>&1
 done

@@ -8,6 +8,7 @@
 !*.mk
 !*.md
 !*.sh
+!*.txt
 !Makefile
 !.gitignore
 !.vscode/*.json

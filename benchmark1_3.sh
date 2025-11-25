@@ -4,13 +4,18 @@
 
 # Usage: ./benchmark1_3.sh [size of array] [runs]
 
-SIZE=100000 # default size of array: 10^5
+SIZE=1000000 # default size of array: 10^5
 RUNS=10  # default number of times to run each test
 if [ $# -eq 2 ]; then
     SIZE=$1
     RUNS=$2
 fi
 
+# clear file for next run
+truncate -s 0 1_3_benchmark_results.txt
+
+# Redirect all output to file
+exec >> 1_3_benchmark_results.txt 
 
 echo "Compiling..."
 make
@@ -28,8 +33,8 @@ run_test() {
     sumSerial=0
     for ((i=1; i<=$RUNS; i++)); do
        
-        outputSerial=$(./1_3 $size | grep "Serial Execution Time") # Extract line with serial time
-        outputParal=$(./1_3 $size | grep "Parallel Execution Time") # Extract line with parallel time
+        outputSerial=$(./build/1_3 $size | grep "Serial Execution Time") # Extract line with serial time
+        outputParal=$(./build/1_3 $size | grep "Parallel Execution Time") # Extract line with parallel time
 
         timeSerial=$(echo $outputSerial | cut -d' ' -f4) # Get only the time value
         timeParal=$(echo $outputParal | cut -d' ' -f4) # Get only the time value

@@ -2,7 +2,7 @@
 
 # Usage: ./benchmark1_5.sh [iterations] [runs]
 
-ITERS=100000  # Default number of iterations per thread
+ITERS=1000000  # Default number of iterations per thread
 RUNS=5  # Default number of runs per test
 if [ $# -eq 2 ]; then
     ITERS=$1
@@ -30,7 +30,7 @@ run_test_1() {
     
     sum=0
     for ((i=1; i<=$RUNS; i++)); do
-        output=$(./1_5 $threads $iters | grep "Elapsed time") # Extract line with time
+        output=$(./build/1_5 $threads $iters | grep "Elapsed time") # Extract line with time
         time=$(echo $output | cut -d' ' -f3) # Get only the time value (3rd field)
         sum=$(echo "$sum + $time" | bc) # calculate sum of times
     done
@@ -46,7 +46,7 @@ run_test_2() {
     
     sum=0
     for ((i=1; i<=$RUNS; i++)); do
-        output=$(./1_5_mutex_condvar $threads $iters | grep "Elapsed time") # Extract line with time
+        output=$(./build/1_5_mutex_condvar $threads $iters | grep "Elapsed time") # Extract line with time
         time=$(echo $output | cut -d' ' -f3) # Get only the time value (3rd field)
         sum=$(echo "$sum + $time" | bc) # calculate sum of times
     done
@@ -62,7 +62,7 @@ run_test_3() {
     
     sum=0
     for ((i=1; i<=$RUNS; i++)); do
-        output=$(./1_5_busy_waiting $threads $iters | grep "Elapsed time") # Extract line with time
+        output=$(./build/1_5_busy_waiting $threads $iters | grep "Elapsed time") # Extract line with time
         time=$(echo $output | cut -d' ' -f3) # Get only the time value (3rd field)
         sum=$(echo "$sum + $time" | bc) # calculate sum of times
     done

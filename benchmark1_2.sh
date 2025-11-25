@@ -2,13 +2,18 @@
 
 # Usage: ./benchmark1_2.sh [iterations] [runs]
 
-ITERS=10000
+ITERS=1000000
 RUNS=10  # default number of times to run each test
 if [ $# -eq 2 ]; then
     ITERS=$1
     RUNS=$2
 fi
 
+# clear file for next run
+truncate -s 0 1_2_benchmark_results.txt
+
+# Redirect all output to file
+exec >> 1_2_benchmark_results.txt 
 
 echo "Compiling..."
 make
@@ -26,7 +31,7 @@ run_test() {
     
     sum=0
     for ((i=1; i<=$RUNS; i++)); do
-        output=$(./1_2 $threads $iters $alg | grep "Time") # Extract line with time
+        output=$(./build/1_2 $threads $iters $alg | grep "Time") # Extract line with time
         time=$(echo $output | cut -d' ' -f2) # Get only the time value
         sum=$(echo "$sum + $time" | bc) # calculate sum of times
     done
