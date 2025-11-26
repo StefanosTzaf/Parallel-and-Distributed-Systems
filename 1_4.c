@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <ctype.h>  
 #include <string.h>
+#include <math.h>
 
 
 pthread_mutex_t coarse_mutex;
@@ -37,11 +38,15 @@ void* thread_func(void* arg) {
             
         for(int i = 0; i < data->total_transactions; i++ ){
             bool is_read = (rand_r(&seed) % 100) < data->percentage_read;
-
             if(is_read){
+                int x = 0;
                 int account = rand_r(&seed) % data->number_of_accounts;
                 pthread_mutex_lock(&coarse_mutex);
                     sum_of_balances_read += data->account_balances[account];
+                    // simulate some work    
+                    for(int j = 0; j < 150; j++){
+                            x = x + 1;
+                        } 
                 pthread_mutex_unlock(&coarse_mutex);
             }
             else{
@@ -70,11 +75,14 @@ void* thread_func(void* arg) {
 
         for(int i = 0; i < data->total_transactions; i++ ){
             bool is_read = (rand_r(&seed) % 100) < data->percentage_read;
-
             if(is_read){
+                int x=0;
                 int account = rand_r(&seed) % data->number_of_accounts;
                 pthread_mutex_lock(&data->fine_mutexes[account]);
                     sum_of_balances_read += data->account_balances[account];
+                    for(int j = 0; j < 150; j++){
+                        x = x + 1;
+                    }
                 pthread_mutex_unlock(&data->fine_mutexes[account]);
             }
             else{
@@ -112,10 +120,15 @@ void* thread_func(void* arg) {
             bool is_read = (rand_r(&seed) % 100) < data->percentage_read;
 
             if(is_read){
+                int x=0;
                 int account = rand_r(&seed) % data->number_of_accounts;
                 pthread_rwlock_rdlock(&coarse_rwlock);
                     sum_of_balances_read += data->account_balances[account];
+                    for(int j = 0; j < 150; j++){
+                        x = x + 1;
+                    }
                 pthread_rwlock_unlock(&coarse_rwlock);
+
             }
             else{
                 
@@ -144,9 +157,13 @@ void* thread_func(void* arg) {
             bool is_read = (rand_r(&seed) % 100) < data->percentage_read;
 
             if(is_read){
+                int x=0;
                 int account = rand_r(&seed) % data->number_of_accounts;
                 pthread_rwlock_rdlock(&data->fine_rwlocks[account]);
                     sum_of_balances_read += data->account_balances[account];
+                    for(int j = 0; j < 150; j++){
+                        x = x + 1;
+                    }
                 pthread_rwlock_unlock(&data->fine_rwlocks[account]);
             }
             else{
