@@ -13,9 +13,9 @@ pthread_mutex_t coarse_mutex;
 pthread_rwlock_t coarse_rwlock;
 
 typedef struct {
-    int transactions_read;
-    int transactions_write;
+    int percentage_read;
     int number_of_accounts;
+    int total_transactions;
     unsigned long* account_balances;
     int type_of_sync;
     pthread_mutex_t* fine_mutexes;
@@ -34,134 +34,147 @@ void* thread_func(void* arg) {
 
     // COARSE GRAINED MUTEX
     if(data->type_of_sync == 1){  // if is not placed inside the loop it will checked only once for all read transactions
-        for(int i = 0; i < data->transactions_read; i++){
-            int account = rand_r(&seed) % data->number_of_accounts;
-            pthread_mutex_lock(&coarse_mutex);
-                sum_of_balances_read += data->account_balances[account];
-            pthread_mutex_unlock(&coarse_mutex);
-        }
             
-        // Perform write transactions
-        for(int i = 0; i < data->transactions_write; i++){
-            int account_1 = rand_r(&seed) % data->number_of_accounts;
-            int account_2 = rand_r(&seed) % data->number_of_accounts;
-            if(account_1 == account_2){
-                account_2 = (account_2 + 1) % data->number_of_accounts;
+        for(int i = 0; i < data->total_transactions; i++ ){
+            bool is_read = (rand_r(&seed) % 100) < data->percentage_read;
+
+            if(is_read){
+                int account = rand_r(&seed) % data->number_of_accounts;
+                pthread_mutex_lock(&coarse_mutex);
+                    sum_of_balances_read += data->account_balances[account];
+                pthread_mutex_unlock(&coarse_mutex);
             }
-            unsigned int amount = rand_r(&seed);
-            // we do not accept negative balances
-            
-            pthread_mutex_lock(&coarse_mutex);
-                if(amount > data->account_balances[account_1]){
-                    amount = data->account_balances[account_1];
+            else{
+                
+                int account_1 = rand_r(&seed) % data->number_of_accounts;
+                int account_2 = rand_r(&seed) % data->number_of_accounts;
+                if(account_1 == account_2){
+                    account_2 = (account_2 + 1) % data->number_of_accounts;
                 }
-                data->account_balances[account_1] -= amount;
-                data->account_balances[account_2] += amount;
-            pthread_mutex_unlock(&coarse_mutex);
+                unsigned int amount = rand_r(&seed);
+                // we do not accept negative balances
+                
+                pthread_mutex_lock(&coarse_mutex);
+                    if(amount > data->account_balances[account_1]){
+                        amount = data->account_balances[account_1];
+                    }
+                    data->account_balances[account_1] -= amount;
+                    data->account_balances[account_2] += amount;
+                pthread_mutex_unlock(&coarse_mutex);
+            }
         }
     }
 
     // FINE GRAINED MUTEX
     else if(data->type_of_sync == 2){
-        for(int i = 0; i < data->transactions_read; i++){
-            int account = rand_r(&seed) % data->number_of_accounts;
-            pthread_mutex_lock(&data->fine_mutexes[account]);
-                sum_of_balances_read += data->account_balances[account];
-            pthread_mutex_unlock(&data->fine_mutexes[account]);
-        }
-            
-        // Perform write transactions
-        for(int i = 0; i < data->transactions_write; i++){
-            int account_1 = rand_r(&seed) % data->number_of_accounts;
-            int account_2 = rand_r(&seed) % data->number_of_accounts;
-            if(account_1 == account_2){
-                account_2 = (account_2 + 1) % data->number_of_accounts;
-            }
-            unsigned int amount = rand_r(&seed);
-            // we do not accept negative balances
-            
-            int first = account_1 < account_2 ? account_1 : account_2;
-            int second = account_1 < account_2 ? account_2 : account_1;
-                        
-            // Lock in a consistent order to prevent deadlocks
-            pthread_mutex_lock(&data->fine_mutexes[first]);
-            pthread_mutex_lock(&data->fine_mutexes[second]);
-            
-                if(amount > data->account_balances[account_1]){
-                    amount = data->account_balances[account_1];
-                }
-                data->account_balances[account_1] -= amount;
-                data->account_balances[account_2] += amount;
-            
-            pthread_mutex_unlock(&data->fine_mutexes[second]);
-            pthread_mutex_unlock(&data->fine_mutexes[first]);
-        }
 
+        for(int i = 0; i < data->total_transactions; i++ ){
+            bool is_read = (rand_r(&seed) % 100) < data->percentage_read;
+
+            if(is_read){
+                int account = rand_r(&seed) % data->number_of_accounts;
+                pthread_mutex_lock(&data->fine_mutexes[account]);
+                    sum_of_balances_read += data->account_balances[account];
+                pthread_mutex_unlock(&data->fine_mutexes[account]);
+            }
+            else{
+                
+                int account_1 = rand_r(&seed) % data->number_of_accounts;
+                int account_2 = rand_r(&seed) % data->number_of_accounts;
+                if(account_1 == account_2){
+                    account_2 = (account_2 + 1) % data->number_of_accounts;
+                }
+                unsigned int amount = rand_r(&seed);
+                // we do not accept negative balances
+                
+                int first = account_1 < account_2 ? account_1 : account_2;
+                int second = account_1 < account_2 ? account_2 : account_1;
+                            
+                // Lock in a consistent order to prevent deadlocks
+                pthread_mutex_lock(&data->fine_mutexes[first]);
+                pthread_mutex_lock(&data->fine_mutexes[second]);
+                
+                    if(amount > data->account_balances[account_1]){
+                        amount = data->account_balances[account_1];
+                    }
+                    data->account_balances[account_1] -= amount;
+                    data->account_balances[account_2] += amount;
+                
+                pthread_mutex_unlock(&data->fine_mutexes[second]);
+                pthread_mutex_unlock(&data->fine_mutexes[first]);
+            }
+        }
     }
 
     // COARSE GRAINED RWLOCK
     else if(data->type_of_sync == 3){
-        for(int i = 0; i < data->transactions_read; i++){
-            int account = rand_r(&seed) % data->number_of_accounts;
-            pthread_rwlock_rdlock(&coarse_rwlock);
-                sum_of_balances_read += data->account_balances[account];
-            pthread_rwlock_unlock(&coarse_rwlock);
-        }
-            
-        // Perform write transactions
-        for(int i = 0; i < data->transactions_write; i++){
-            int account_1 = rand_r(&seed) % data->number_of_accounts;
-            int account_2 = rand_r(&seed) % data->number_of_accounts;
-            if(account_1 == account_2){
-                account_2 = (account_2 + 1) % data->number_of_accounts;
+        for(int i = 0; i < data->total_transactions; i++ ){
+            bool is_read = (rand_r(&seed) % 100) < data->percentage_read;
+
+            if(is_read){
+                int account = rand_r(&seed) % data->number_of_accounts;
+                pthread_rwlock_rdlock(&coarse_rwlock);
+                    sum_of_balances_read += data->account_balances[account];
+                pthread_rwlock_unlock(&coarse_rwlock);
             }
-            unsigned int amount = rand_r(&seed);
-            // we do not accept negative balances
-            
-            pthread_rwlock_wrlock(&coarse_rwlock);
-                if(amount > data->account_balances[account_1]){
-                    amount = data->account_balances[account_1];
+            else{
+                
+                int account_1 = rand_r(&seed) % data->number_of_accounts;
+                int account_2 = rand_r(&seed) % data->number_of_accounts;
+                if(account_1 == account_2){
+                    account_2 = (account_2 + 1) % data->number_of_accounts;
                 }
-                data->account_balances[account_1] -= amount;
-                data->account_balances[account_2] += amount;
-            pthread_rwlock_unlock(&coarse_rwlock);
+                unsigned int amount = rand_r(&seed);
+                // we do not accept negative balances
+                
+                pthread_rwlock_wrlock(&coarse_rwlock);
+                    if(amount > data->account_balances[account_1]){
+                        amount = data->account_balances[account_1];
+                    }
+                    data->account_balances[account_1] -= amount;
+                    data->account_balances[account_2] += amount;
+                pthread_rwlock_unlock(&coarse_rwlock);
+            }
         }
     }
 
     // FINE GRAINED RWLOCK
     else if(data->type_of_sync == 4){
-        for(int i = 0; i < data->transactions_read; i++){
-            int account = rand_r(&seed) % data->number_of_accounts;
-            pthread_rwlock_rdlock(&data->fine_rwlocks[account]);
-                sum_of_balances_read += data->account_balances[account];
-            pthread_rwlock_unlock(&data->fine_rwlocks[account]);
-        }
-            
-        // Perform write transactions
-        for(int i = 0; i < data->transactions_write; i++){
-            int account_1 = rand_r(&seed) % data->number_of_accounts;
-            int account_2 = rand_r(&seed) % data->number_of_accounts;
-            if(account_1 == account_2){
-                account_2 = (account_2 + 1) % data->number_of_accounts;
+        for(int i = 0; i < data->total_transactions; i++ ){
+            bool is_read = (rand_r(&seed) % 100) < data->percentage_read;
+
+            if(is_read){
+                int account = rand_r(&seed) % data->number_of_accounts;
+                pthread_rwlock_rdlock(&data->fine_rwlocks[account]);
+                    sum_of_balances_read += data->account_balances[account];
+                pthread_rwlock_unlock(&data->fine_rwlocks[account]);
             }
-            unsigned int amount = rand_r(&seed);
-            // we do not accept negative balances
-            
-            int first = account_1 < account_2 ? account_1 : account_2;
-            int second = account_1 < account_2 ? account_2 : account_1;
-                        
-            // Lock in a consistent order to prevent deadlocks
-            pthread_rwlock_wrlock(&data->fine_rwlocks[first]);
-            pthread_rwlock_wrlock(&data->fine_rwlocks[second]);
-            
-                if(amount > data->account_balances[account_1]){
-                    amount = data->account_balances[account_1];
+            else{
+                
+                int account_1 = rand_r(&seed) % data->number_of_accounts;
+                int account_2 = rand_r(&seed) % data->number_of_accounts;
+                if(account_1 == account_2){
+                    account_2 = (account_2 + 1) % data->number_of_accounts;
                 }
-                data->account_balances[account_1] -= amount;
-                data->account_balances[account_2] += amount;
-            
-            pthread_rwlock_unlock(&data->fine_rwlocks[second]);
-            pthread_rwlock_unlock(&data->fine_rwlocks[first]);
+                unsigned int amount = rand_r(&seed);
+                // we do not accept negative balances
+                
+                int first = account_1 < account_2 ? account_1 : account_2;
+                int second = account_1 < account_2 ? account_2 : account_1;
+                            
+                // Lock in a consistent order to prevent deadlocks
+                pthread_rwlock_wrlock(&data->fine_rwlocks[first]);
+                pthread_rwlock_wrlock(&data->fine_rwlocks[second]);
+                
+                    if(amount > data->account_balances[account_1]){
+                        amount = data->account_balances[account_1];
+                    }
+                    data->account_balances[account_1] -= amount;
+                    data->account_balances[account_2] += amount;
+                
+                pthread_rwlock_unlock(&data->fine_rwlocks[second]);
+                pthread_rwlock_unlock(&data->fine_rwlocks[first]);
+            }
         }
     }
     else{
@@ -262,8 +275,6 @@ int main(int argc, char* argv[]) {
         sum_of_balances_initially += account_balances[i];
     }
 
-    int transactions_read_per_thread = transactions_per_thread * percentage_of_read_transactions / 100;
-    int transactions_write_per_thread = transactions_per_thread - transactions_read_per_thread;
 
     pthread_t* threads = (pthread_t*)malloc(number_of_threads * sizeof(pthread_t));
     if(threads == NULL){
@@ -281,15 +292,20 @@ int main(int argc, char* argv[]) {
     clock_gettime(CLOCK_MONOTONIC, &start_time);
 
     for(int i = 0; i < number_of_threads; i++){
-        thread_data_array[i].transactions_read = transactions_read_per_thread;
-        thread_data_array[i].transactions_write = transactions_write_per_thread;
-        thread_data_array[i].number_of_accounts = n;
-        thread_data_array[i].account_balances = account_balances;
-        thread_data_array[i].type_of_sync = type_of_sync_flag;
-        thread_data_array[i].fine_mutexes = fine_mutexes;
-        thread_data_array[i].fine_rwlocks = fine_rwlocks;
+        ThreadData* thread_data = (ThreadData*)malloc(sizeof(ThreadData));
+        if(thread_data == NULL){
+            fprintf(stderr, "Memory allocation failed\n");
+            return 1;
+        }
+        thread_data->percentage_read = percentage_of_read_transactions;
+        thread_data->total_transactions = transactions_per_thread;
+        thread_data->number_of_accounts = n;
+        thread_data->account_balances = account_balances;
+        thread_data->type_of_sync = type_of_sync_flag;
+        thread_data->fine_mutexes = fine_mutexes;
+        thread_data->fine_rwlocks = fine_rwlocks;
 
-        if(pthread_create(&threads[i], NULL, thread_func, (void*)&thread_data_array[i]) != 0){
+        if(pthread_create(&threads[i], NULL, thread_func, (void*)thread_data) != 0){
             fprintf(stderr, "Error creating thread\n");
             return 1;
         }
