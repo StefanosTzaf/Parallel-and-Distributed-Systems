@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Usage: ./benchmark1_1.sh [degree] [threads] [runs]
 
 # Benchmark script for 1.1
 if [ $# -lt 2 ]; then

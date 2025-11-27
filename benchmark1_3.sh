@@ -4,8 +4,8 @@
 
 # Usage: ./benchmark1_3.sh [size of array] [runs]
 
-SIZE=1000000 # default size of array: 10^6
-RUNS=10  # default number of times to run each test
+SIZE=10000000 # default size of array: 10^7
+RUNS=5  # default number of times to run each test
 if [ $# -eq 2 ]; then
     SIZE=$1
     RUNS=$2

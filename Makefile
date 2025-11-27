@@ -50,15 +50,18 @@ $(BUILD_DIR)/%.o: %.c
 
 # Run targets with example arguments
 
+run1:
+	$(TARGET1) 4 1000000
+
 #2 threads, 20 iterations, mutex/rwlock/atomic
 run2:
-	$(TARGET2) 4 10000 1   
-	$(TARGET2) 4 10000 2
-	$(TARGET2) 4 10000 3
+	$(TARGET2) 4 1000000 1   
+	$(TARGET2) 4 1000000 2
+	$(TARGET2) 4 1000000 3
 
 # size of array
 run3:
-	$(TARGET3) 1000000
+	$(TARGET3) 10000000
 
 # number of threads, number of iterations
 run5:

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Usage: ./benchmark1_4.sh <number_of_accounts> <transactions_per_thread> <percentage_of_read_transactions> 
+#    <number_of_threads> [iterations]
+
 # Benchmark script for 1.4 - no type of sync sync is given we will run it for all 4 types
 if [ $# -ne 5 ] && [ $# -ne 4 ]; then
     echo "Usage: $0 <number_of_accounts> <transactions_per_thread> <percentage_of_read_transactions> <number_of_threads> [iterations]"
