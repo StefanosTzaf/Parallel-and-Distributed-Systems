@@ -16,6 +16,7 @@ bool verify_results(__int128_t* serial, __int128_t* parallel, int size) {
     return true;
 }
 
+
 int main(int argc, char *argv[]){
     if(argc != 3){
         fprintf(stderr, "Usage: %s <Degree of the Polynomials> <Threads number>\n", argv[0]);
@@ -26,11 +27,11 @@ int main(int argc, char *argv[]){
     int threads_num = atoi(argv[2]);
 
     
-    struct timespec init_start, init_end, serial_start, serial_end;
-    struct timespec parallel_start, parallel_end;
+ double init_start, init_end, serial_start, serial_end;
+    double parallel_start, parallel_end;
     
     // start initialization timing 
-    clock_gettime(CLOCK_MONOTONIC, &init_start);
+    init_start = omp_get_wtime();
 
     int* poly1 = (int*)malloc((degree + 1) * sizeof(int));
     if(poly1 == NULL){
@@ -77,10 +78,10 @@ int main(int argc, char *argv[]){
         return 1;
     }
 
-    clock_gettime(CLOCK_MONOTONIC, &init_end);
+    init_end = omp_get_wtime();
 
     // start serial algorithm timing
-    clock_gettime(CLOCK_MONOTONIC, &serial_start);
+    serial_start = omp_get_wtime();
     
     // Serial Polynomial Multiplication (same algorithm as parallel)
     for(int k = 0; k < result_size; k++) {
@@ -97,18 +98,29 @@ int main(int argc, char *argv[]){
         
         serial_result[k] = sum;
     }
-    clock_gettime(CLOCK_MONOTONIC, &serial_end);
+    serial_end = omp_get_wtime();
 
 
 
     // start parallel algorithm timing
-    clock_gettime(CLOCK_MONOTONIC, &parallel_start);
+    parallel_start = omp_get_wtime();
 
-    // #pragma omp parallel for num_threads(threads_num)
+    #pragma omp parallel for num_threads(threads_num) schedule(guided) default(none) shared(poly1, poly2, parallel_result, degree, result_size)
+        for(int k = 0; k < result_size; k++) {
+            __int128_t sum = 0;
+            
+            int i_start = (k - degree) > 0 ? (k - degree) : 0;
+            int i_end = (k < degree) ? k : degree;
+            
+            for (int i = i_start; i <= i_end; i++) {
+                sum += (__int128_t)poly1[i] * poly2[k - i];
+            }
+            
+            parallel_result[k] = sum;
+        }
 
 
-
-    clock_gettime(CLOCK_MONOTONIC, &parallel_end);
+    parallel_end = omp_get_wtime();
 
     // Verification of results
     printf("\n=== Verification of Results ===\n");
@@ -120,9 +132,9 @@ int main(int argc, char *argv[]){
     }
     
     // Print timings
-    double init_time = get_time_sec(init_start, init_end);
-    double serial_time = get_time_sec(serial_start, serial_end);
-    double parallel_time = get_time_sec(parallel_start, parallel_end);
+    double init_time = init_end - init_start;
+    double serial_time = serial_end - serial_start;
+    double parallel_time = parallel_end - parallel_start;
     double speedup = serial_time / parallel_time;
     
     printf("\n=== Times ===\n");
