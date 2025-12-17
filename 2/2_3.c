@@ -33,92 +33,31 @@ int main(int argc, char* argv[]){
 
     if(strcmp(argv[2], "serial") == 0){
         divideArray(array, arraySize);
-        clock_gettime(CLOCK_REALTIME, &end);
     }
     else{
- 
-
+        // max threadsNum threads can execute tasks 
+        #pragma omp parallel num_threads(threadsNum)
+        {
+            // only one thread should start the recursion
+            // and create the tasks
+            #pragma omp single
+            {
+                divideArrayPar(array, arraySize);
+            }
+        }        
     }
+    clock_gettime(CLOCK_REALTIME, &end);
 
     double totalTime = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
 
     printf("Time: %f\n", totalTime);
 
+    // for(int i = 0; i < arraySize; i++){
+    //     printf("A[%d] = %d\n", i, array[i]);
+    // }
+
     free(array);
 
-
-}
-
-void merge(int result[], int array1[], size_t size1, int array2[], size_t size2){
-
-    size_t size = size1 + size2;
-    int k = 0, leftIdx = 0, rightIdx = 0;
-    
-    while (leftIdx < size1 && rightIdx < size2) {
-        
-        if (array1[leftIdx] <= array2[rightIdx]){
-            result[k] = array1[leftIdx];
-            leftIdx++;
-        }
-        else{
-            result[k] = array2[rightIdx];
-            rightIdx++;
-        }
-        k++;
-    }
-
-    // elements of left array have already been moved
-    if(leftIdx == size1){
-        // copy remaining elements of array2
-        while (rightIdx < size2){
-            result[k] = array2[rightIdx];
-            k++;
-            rightIdx++;
-        }
-    }
-
-    // elements of right array have already been moved
-    else{
-        // copy remaining elements of array1
-        while (leftIdx < size1){
-            result[k] = array1[leftIdx];
-            k++;
-            leftIdx++;
-        }
-    }
-
-}
-
-
-void divideArray(int arr[], size_t size){
-
-
-    if(size == 1){
-        return;
-    }
-
-    int divPoint = size / 2; // point of division of array
-
-    int* leftArray = malloc(sizeof(int)*divPoint);
-    int* rightArray = malloc(sizeof(int)*(size - divPoint));
-
-    for(int i = 0; i < divPoint; i++){
-        leftArray[i] = arr[i];
-    }
-
-    int idx = 0;
-    for(int i = divPoint; i < size; i++){
-        rightArray[idx] = arr[i];
-        idx++;
-    }
-
-    divideArray(leftArray, divPoint);
-    divideArray(rightArray, size - divPoint);
-
-    merge(arr, leftArray, divPoint, rightArray, size - divPoint);
-
-    free(leftArray);
-    free(rightArray);
 
 }
 
@@ -165,7 +104,85 @@ void mergePar(int result[], int array1[], size_t size1, int array2[], size_t siz
 
 void divideArrayPar(int arr[], size_t size){
 
-    if(size == 1){
+    if(size <= 1){
+        return;
+    }
+
+    int divPoint = size / 2; // point of division of array
+
+    int* leftArray = malloc(sizeof(int)*divPoint);
+    int* rightArray = malloc(sizeof(int)*(size - divPoint));
+
+    for(int i = 0; i < divPoint; i++){
+        leftArray[i] = arr[i];
+    }
+
+    int idx = 0;
+    for(int i = divPoint; i < size; i++){
+        rightArray[idx] = arr[i];
+        idx++;
+    }
+
+    #pragma omp task firstprivate(divPoint)
+    divideArrayPar(leftArray, divPoint);
+    
+    #pragma omp task
+    divideArrayPar(rightArray, size - divPoint);
+
+    // wait for all tasks to finish to execute merge
+    // otherwise arrays may not be ready
+    #pragma omp taskwait
+    merge(arr, leftArray, divPoint, rightArray, size - divPoint);
+
+    free(leftArray);
+    free(rightArray);
+
+}
+
+void merge(int result[], int array1[], size_t size1, int array2[], size_t size2){
+
+    size_t size = size1 + size2;
+    int k = 0, leftIdx = 0, rightIdx = 0;
+    
+    while (leftIdx < size1 && rightIdx < size2) {
+        
+        if (array1[leftIdx] <= array2[rightIdx]){
+            result[k] = array1[leftIdx];
+            leftIdx++;
+        }
+        else{
+            result[k] = array2[rightIdx];
+            rightIdx++;
+        }
+        k++;
+    }
+
+    // elements of left array have already been moved
+    if(leftIdx == size1){
+        // copy remaining elements of array2
+        while (rightIdx < size2){
+            result[k] = array2[rightIdx];
+            k++;
+            rightIdx++;
+        }
+    }
+
+    // elements of right array have already been moved
+    else{
+        // copy remaining elements of array1
+        while (leftIdx < size1){
+            result[k] = array1[leftIdx];
+            k++;
+            leftIdx++;
+        }
+    }
+
+}
+
+
+void divideArray(int arr[], size_t size){
+
+    if(size <= 1){
         return;
     }
 
@@ -193,6 +210,10 @@ void divideArrayPar(int arr[], size_t size){
     free(rightArray);
 
 }
+
+
+
+
 
 
 
