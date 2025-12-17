@@ -63,7 +63,6 @@ int main(int argc, char* argv[]){
 
 void mergePar(int result[], int array1[], size_t size1, int array2[], size_t size2){
 
-    size_t size = size1 + size2;
     int k = 0, leftIdx = 0, rightIdx = 0;
     
     while (leftIdx < size1 && rightIdx < size2) {
@@ -141,7 +140,6 @@ void divideArrayPar(int arr[], size_t size){
 
 void merge(int result[], int array1[], size_t size1, int array2[], size_t size2){
 
-    size_t size = size1 + size2;
     int k = 0, leftIdx = 0, rightIdx = 0;
     
     while (leftIdx < size1 && rightIdx < size2) {
