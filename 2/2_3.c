@@ -4,10 +4,11 @@
 #include <time.h>
 #include <string.h>
 
+#define TASK_LIMIT 10000
+
 
 void merge(int [], int [], size_t, int[], size_t);
 void divideArray(int [], size_t);
-void mergePar(int [], int [], size_t, int[], size_t);
 void divideArrayPar(int [], size_t);
 
 
@@ -31,15 +32,23 @@ int main(int argc, char* argv[]){
     struct timespec start, end;
     clock_gettime(CLOCK_REALTIME, &start);
 
+    printf("--------------------\n");
+
     if(strcmp(argv[2], "serial") == 0){
+        printf("serial execution\n");
+        printf("array size: %d\n", arraySize);
         divideArray(array, arraySize);
     }
     else{
+        printf("parallel execution\n");
+        printf("number of threads: %d \n", threadsNum);
+        printf("array size: %d\n", arraySize);
+
         // max threadsNum threads can execute tasks 
         #pragma omp parallel num_threads(threadsNum)
         {
             // only one thread should start the recursion
-            // and create the tasks
+            // and create the initial tasks
             #pragma omp single
             {
                 divideArrayPar(array, arraySize);
@@ -51,6 +60,8 @@ int main(int argc, char* argv[]){
     double totalTime = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
 
     printf("Time: %f\n", totalTime);
+    printf("----------------------------\n");
+
 
     // for(int i = 0; i < arraySize; i++){
     //     printf("A[%d] = %d\n", i, array[i]);
@@ -58,45 +69,6 @@ int main(int argc, char* argv[]){
 
     free(array);
 
-
-}
-
-void mergePar(int result[], int array1[], size_t size1, int array2[], size_t size2){
-
-    int k = 0, leftIdx = 0, rightIdx = 0;
-    
-    while (leftIdx < size1 && rightIdx < size2) {
-        
-        if (array1[leftIdx] <= array2[rightIdx]){
-            result[k] = array1[leftIdx];
-            leftIdx++;
-        }
-        else{
-            result[k] = array2[rightIdx];
-            rightIdx++;
-        }
-        k++;
-    }
-
-    // elements of left array have already been moved
-    if(leftIdx == size1){
-        // copy remaining elements of array2
-        while (rightIdx < size2){
-            result[k] = array2[rightIdx];
-            k++;
-            rightIdx++;
-        }
-    }
-
-    // elements of right array have already been moved
-    else{
-        // copy remaining elements of array1
-        while (leftIdx < size1){
-            result[k] = array1[leftIdx];
-            k++;
-            leftIdx++;
-        }
-    }
 
 }
 
@@ -122,10 +94,10 @@ void divideArrayPar(int arr[], size_t size){
         idx++;
     }
 
-    #pragma omp task firstprivate(divPoint)
+    #pragma omp task shared(leftArray) shared(divPoint) if (divPoint > TASK_LIMIT)
     divideArrayPar(leftArray, divPoint);
     
-    #pragma omp task
+    #pragma omp task shared(rightArray) shared(divPoint) if ((size - divPoint) > TASK_LIMIT)
     divideArrayPar(rightArray, size - divPoint);
 
     // wait for all tasks to finish to execute merge

@@ -50,8 +50,10 @@ run_test_1() {
 
 if [ "$ALG" == "parallel" ]; then
 
+    run_test_1 $SIZE $ALG 1
     run_test_1 $SIZE $ALG 2
     run_test_1 $SIZE $ALG 4
+    run_test_1 $SIZE $ALG 8
 
 fi
 
