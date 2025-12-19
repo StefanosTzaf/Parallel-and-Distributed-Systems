@@ -4,7 +4,7 @@
 
 SIZE=1000000  # Default number of array size 
 RUNS=5  # Default number of runs per test
-ALG="parallel"
+ALG="serial"
 if [ $# -eq 2 ]; then
     SIZE=$1
     RUNS=$2
@@ -48,6 +48,9 @@ run_test_1() {
     
 }
 
+run_test_1 $SIZE $ALG 1
+
+ALG="parallel"
 if [ "$ALG" == "parallel" ]; then
 
     run_test_1 $SIZE $ALG 1
@@ -57,8 +60,6 @@ if [ "$ALG" == "parallel" ]; then
 
 fi
 
-ALG="serial"
-run_test_1 $SIZE $ALG 1
 
 
 
