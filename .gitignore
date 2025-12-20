@@ -11,3 +11,4 @@
 !Makefile
 !.gitignore
 !.vscode/*.json
+!/3/mpi_instructions/**

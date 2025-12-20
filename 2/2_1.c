@@ -18,6 +18,7 @@ bool verify_results(__int128_t* serial, __int128_t* parallel, int size) {
 
 
 int main(int argc, char *argv[]){
+
     if(argc != 3){
         fprintf(stderr, "Usage: %s <Degree of the Polynomials> <Threads number>\n", argv[0]);
         return 1;
@@ -27,7 +28,7 @@ int main(int argc, char *argv[]){
     int threads_num = atoi(argv[2]);
 
     
- double init_start, init_end, serial_start, serial_end;
+    double init_start, init_end, serial_start, serial_end;
     double parallel_start, parallel_end;
     
     // start initialization timing 
@@ -45,7 +46,7 @@ int main(int argc, char *argv[]){
     }
 
     
-    // Initialize polynomials with random coefficients between
+    // Initialize polynomials with random coefficients
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     unsigned int seed = ts.tv_nsec ^ ts.tv_sec;
@@ -83,7 +84,7 @@ int main(int argc, char *argv[]){
     // start serial algorithm timing
     serial_start = omp_get_wtime();
     
-    // Serial Polynomial Multiplication (same algorithm as parallel)
+    //Serial Polynomial Multiplication (same algorithm as parallel)
     for(int k = 0; k < result_size; k++) {
         __int128_t sum = 0;
         
