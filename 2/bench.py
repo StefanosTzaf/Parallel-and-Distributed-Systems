@@ -25,7 +25,7 @@ DEFAULT_ITERATIONS = 10
 DEFAULT_THREADS = 4
 DEFAULT_DIM = 10000
 
-time_pattern = re.compile(r"(Initialization|Parallel CSR Multiplication|Serial CSR Multiplication|Parallel Dense Multiplication) Time: ([0-9.eE+-]+)")
+time_pattern = re.compile(r"(Initialization|Initialization Serial|Parallel CSR Multiplication|Serial CSR Multiplication|Parallel Dense Multiplication) Time: ([0-9.eE+-]+)")
 
 NUM_RUNS = 4  # Number of times to run each benchmark for averaging
 
@@ -34,6 +34,7 @@ def run_case(dimension: int, sparsity: int, iterations: int, threads: int):
     """Run benchmark NUM_RUNS times and return average timings."""
     all_times = {
         "Initialization": [],
+        "Initialization Serial": [],
         "Parallel CSR Multiplication": [],
         "Serial CSR Multiplication": [],
         "Parallel Dense Multiplication": [],
@@ -52,7 +53,7 @@ def run_case(dimension: int, sparsity: int, iterations: int, threads: int):
                 label, val = m.group(1), float(m.group(2))
                 run_times[label] = val
         
-        if len(run_times) != 4:
+        if len(run_times) != 5:
             raise ValueError(f"Parsed times incomplete for command: {' '.join(cmd)}\nParsed: {run_times}\nOutput:\n{result.stdout}")
         
         for label, val in run_times.items():
