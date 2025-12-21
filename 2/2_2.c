@@ -56,7 +56,6 @@ void check_results(long long* res1, long long* res2, int dimension){
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     unsigned int seed = ts.tv_nsec ^ ts.tv_sec;
-    int non_zero_elements_count = 0;
 
     //Initialize matrix and vector with random values and zeros
     for(int i = 0; i < dimension; i++){
@@ -66,7 +65,6 @@ void check_results(long long* res1, long long* res2, int dimension){
                 matrix[i][j] = 0;
             } 
             else {
-                non_zero_elements_count++;
                 bool sign = rand_r(&seed) % 2;
                 // generate random non-zero value
                 int value = (rand_r(&seed) % RAND_MAX) + 1;
@@ -80,23 +78,16 @@ void check_results(long long* res1, long long* res2, int dimension){
 
     // initialize CSR arrays
     double start_init = omp_get_wtime();
-    int* non_zero_values = (int*)malloc(non_zero_elements_count * sizeof(int));
-    int* column_indices = (int*)malloc(non_zero_elements_count * sizeof(int));
-    // save the total number of non-zero elements above the current row
-    int* row_indeces = (int*)malloc((dimension + 1) * sizeof(int));
-    if(non_zero_values == NULL || column_indices == NULL || row_indeces == NULL){
-        printf("Memory allocation failed\n");
-        return 1;
-    }
 
+    // first compute the 3rd CSR array because we will need to know the number of non-zero elements
+    int* row_indeces = (int*)malloc((dimension + 1) * sizeof(int));
     // count of non-zero elements in each row
     int *row_nnz = malloc(dimension * sizeof(int));
-    if(row_nnz == NULL){
+    if(row_indeces == NULL || row_nnz == NULL){
         printf("Memory allocation failed\n");
         return 1;
     }
-
-    #pragma omp parallel for num_threads(threads) default(none) shared(matrix, dimension, row_nnz)
+    #pragma omp parallel for num_threads(threads) schedule(static) default(none) shared(matrix, dimension, row_nnz)
         for (int i = 0; i < dimension; i++) {
             int count = 0;
             for (int j = 0; j < dimension; j++) {
@@ -113,17 +104,24 @@ void check_results(long long* res1, long long* res2, int dimension){
     for (int i = 0; i < dimension; i++) {
         row_indeces[i + 1] = row_indeces[i] + row_nnz[i];
     }
-
+    free(row_nnz);
    
-    #pragma omp parallel for num_threads(threads) default(none) shared(matrix, non_zero_values, column_indices, row_indeces, dimension)
+    // 1st and 2nd CSR arrays
+    int* non_zero_values = (int*)malloc(row_indeces[dimension] * sizeof(int));
+    int* column_indeces = (int*)malloc(row_indeces[dimension] * sizeof(int));
+    // save the total number of non-zero elements above the current row
+    if(non_zero_values == NULL || column_indeces == NULL){
+        printf("Memory allocation failed\n");
+        return 1;
+    }
+   
+    #pragma omp parallel for num_threads(threads) schedule(static) default(none) shared(matrix, non_zero_values, column_indeces, row_indeces, dimension)
     for (int i = 0; i < dimension; i++) {
         int idx = row_indeces[i];
-
-        //TODO : check if we have already found all non-zero elements of this row so to continue to the next
         for (int j = 0; j < dimension; j++) {
             if (matrix[i][j] != 0) {
                 non_zero_values[idx]  = matrix[i][j];
-                column_indices[idx] = j;
+                column_indeces[idx] = j;
                 idx++;
             }
         }
@@ -131,6 +129,7 @@ void check_results(long long* res1, long long* res2, int dimension){
     double end_init = omp_get_wtime();
 
     // we have to copy the initial vector to restore it later for dense multiplication
+    // is not counted in the time measurements because we only do it to be able to run both multiplications
     long long* current_vec = (long long*)malloc(dimension * sizeof(long long));
     if(current_vec == NULL){
         printf("Memory allocation failed\n");
@@ -148,13 +147,15 @@ void check_results(long long* res1, long long* res2, int dimension){
     }
 
     double start_parallel_csr = omp_get_wtime();
+
+    // multiply with CSR format
     for(int i = 0; i < iterations; i++){
-        #pragma omp parallel for num_threads(threads) default(none) shared(dimension, row_indeces, column_indices, non_zero_values, current_vec, result)
+        #pragma omp parallel for num_threads(threads) schedule(static) default(none) shared(dimension, row_indeces, column_indeces, non_zero_values, current_vec, result)
             for(int row = 0; row < dimension; row++){
                 long long sum = 0;
                 // this way we know exactly how many non-zero elements to process in this row
                 for(int idx = row_indeces[row]; idx < row_indeces[row + 1]; idx++){
-                    sum += (long long)non_zero_values[idx] * current_vec[column_indices[idx]];
+                    sum += (long long)non_zero_values[idx] * current_vec[column_indeces[idx]];
                 }
                 result[row] = sum;
             }
@@ -180,11 +181,15 @@ void check_results(long long* res1, long long* res2, int dimension){
     }
 
 
+    // re-initialize current_vec with the original input vector values
+    for(int i = 0; i < dimension; i++){
+        current_vec[i] = vector[i];
+    }
     double start_parallel_dense = omp_get_wtime();
-    current_vec = vector;
+
     // multiply with dense way for comparison
      for(int i = 0; i < iterations; i++){
-        #pragma omp parallel for num_threads(threads) default(none) shared(dimension, matrix, current_vec, result)
+        #pragma omp parallel for num_threads(threads) schedule(static) default(none) shared(dimension, matrix, current_vec, result)
             for(int row = 0; row < dimension; row++){
                 long long sum = 0;
                 for(int col = 0; col < dimension; col++){
@@ -205,19 +210,21 @@ void check_results(long long* res1, long long* res2, int dimension){
 
     // check if results are the same
     check_results(results1, current_vec, dimension);
-    free(results1);
-
+    
     printf("Initialization Time: %f seconds\n", end_init - start_init);
     printf("Parallel CSR Multiplication Time: %f seconds\n", end_parallel_csr - start_parallel_csr);
     printf("Parallel Dense Multiplication Time: %f seconds\n", end_parallel_dense - start_parallel_dense);
+    
+    free(results1);
     free(non_zero_values);
-    free(column_indices);
+    free(column_indeces);
     free(row_indeces);
     for(int i = 0; i < dimension; i++){
         free(matrix[i]);
     }
     free(matrix);
+    free(current_vec);
     free(vector);
-    free(row_nnz);
+    free(result);
     return 0;
  }
