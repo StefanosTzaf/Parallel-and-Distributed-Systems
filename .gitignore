@@ -8,7 +8,9 @@
 !*.mk
 !*.md
 !*.sh
+!*.py
 !Makefile
 !.gitignore
 !.vscode/*.json
 !/3/mpi_instructions/**
+*/venv/

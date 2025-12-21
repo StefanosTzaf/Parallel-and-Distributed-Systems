@@ -148,7 +148,7 @@ void check_results(long long* res1, long long* res2, int dimension){
 
     double start_parallel_csr = omp_get_wtime();
 
-    // multiply with CSR format
+    // multiply with CSR format - parallel
     for(int i = 0; i < iterations; i++){
         #pragma omp parallel for num_threads(threads) schedule(static) default(none) shared(dimension, row_indeces, column_indeces, non_zero_values, current_vec, result)
             for(int row = 0; row < dimension; row++){
@@ -169,7 +169,7 @@ void check_results(long long* res1, long long* res2, int dimension){
     }
 
     double end_parallel_csr = omp_get_wtime();
-
+    
     // save results to compare with dense multiplication
     long long* results1 = malloc(dimension * sizeof(long long));
     if(results1 == NULL){
@@ -179,12 +179,39 @@ void check_results(long long* res1, long long* res2, int dimension){
     for(int i = 0; i < dimension; i++){
         results1[i] = current_vec[i];
     }
+    // re-initialize current_vec with the original input vector values
+    for(int i = 0; i < dimension; i++){
+        current_vec[i] = vector[i];
+    }
+
+    double start_serial_csr = omp_get_wtime();
+    // multiply with CSR way for comparison - serial
+    for(int i = 0; i < iterations; i++){
+        for(int row = 0; row < dimension; row++){
+            long long sum = 0;
+            // this way we know exactly how many non-zero elements to process in this row
+            for(int idx = row_indeces[row]; idx < row_indeces[row + 1]; idx++){
+                sum += (long long)non_zero_values[idx] * current_vec[column_indeces[idx]];
+            }
+            result[row] = sum;
+        }
+    
+        // Swap vectors and do not copy
+        long long* temp = current_vec;
+        current_vec = result;
+        // now current_vec points to the result as new input and result to the old
+        // just so as not to write to the same array
+        result = temp;
+    }    
+    double end_serial_csr = omp_get_wtime();
+
 
 
     // re-initialize current_vec with the original input vector values
     for(int i = 0; i < dimension; i++){
         current_vec[i] = vector[i];
     }
+
     double start_parallel_dense = omp_get_wtime();
 
     // multiply with dense way for comparison
@@ -213,6 +240,7 @@ void check_results(long long* res1, long long* res2, int dimension){
     
     printf("Initialization Time: %f seconds\n", end_init - start_init);
     printf("Parallel CSR Multiplication Time: %f seconds\n", end_parallel_csr - start_parallel_csr);
+    printf("Serial CSR Multiplication Time: %f seconds\n", end_serial_csr - start_serial_csr);
     printf("Parallel Dense Multiplication Time: %f seconds\n", end_parallel_dense - start_parallel_dense);
     
     free(results1);
