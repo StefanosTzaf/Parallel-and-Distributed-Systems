@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define TASK_LIMIT 10000
 
@@ -10,6 +11,7 @@
 void merge(int [], int [], size_t, int[], size_t);
 void divideArray(int [], size_t);
 void divideArrayPar(int [], size_t);
+bool isSorted(int [], size_t);
 
 
 int main(int argc, char* argv[]){
@@ -67,9 +69,23 @@ int main(int argc, char* argv[]){
     //     printf("A[%d] = %d\n", i, array[i]);
     // }
 
+    isSorted(array, arraySize);
+
     free(array);
 
 
+}
+
+bool isSorted(int arr[], size_t size){
+
+    for(size_t i = 1; i < size; i++){
+        if(arr[i-1] > arr[i]){
+            printf("array is not sorted!\n");
+            return false;
+        }
+    }
+    printf("array is sorted!\n");
+    return true;
 }
 
 

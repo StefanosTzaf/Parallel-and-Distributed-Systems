@@ -2,7 +2,7 @@
 
 # Usage: ./benchmark2_3.sh <array size> <number of executions>
 
-SIZE=1000000  # Default number of array size 
+SIZE=10000000  # Default number of array size 
 RUNS=5  # Default number of runs per test
 ALG="serial"
 if [ $# -eq 2 ]; then
@@ -17,7 +17,7 @@ truncate -s 0 2_3_benchmark_results.txt
 exec >> 2_3_benchmark_results.txt 
 
 echo "Compiling..."
-gcc -g -Wall -fopenmp -o 2_3 2_3.c
+make
 
 echo ""
 echo "Running with $SIZE array size(average of $RUNS runs)"
@@ -32,7 +32,7 @@ run_test_1() {
     
     sum=0
     for ((i=1; i<=$RUNS; i++)); do
-        output=$(./2_3 $size $alg $threads | grep "Time") # Extract line with time
+        output=$(./build/2_3 $size $alg $threads | grep "Time") # Extract line with time
         time=$(echo $output | cut -d' ' -f2) # Get only the time value (2nd field)
         sum=$(echo "$sum + $time" | bc) # calculate sum of times
     done
