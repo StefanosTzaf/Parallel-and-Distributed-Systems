@@ -160,7 +160,7 @@ void check_results(long long* result1, long long* result2, int dimension);
             printf("Memory allocation failed\n");
             return 1;
         }
-        #pragma omp parallel for num_threads(threads) schedule(static) default(none) shared(matrix, dimension, row_nnz)
+        #pragma omp parallel for num_threads(threads) schedule(runtime) default(none) shared(matrix, dimension, row_nnz)
             for (int i = 0; i < dimension; i++) {
                 int count = 0;
                 for (int j = 0; j < dimension; j++) {
@@ -188,7 +188,7 @@ void check_results(long long* result1, long long* result2, int dimension);
             return 1;
         }
     
-        #pragma omp parallel for num_threads(threads) schedule(static) default(none) shared(matrix, non_zero_values, column_indeces, row_indeces, dimension)
+        #pragma omp parallel for num_threads(threads) schedule(runtime) default(none) shared(matrix, non_zero_values, column_indeces, row_indeces, dimension)
         for (int i = 0; i < dimension; i++) {
             int idx = row_indeces[i];
             for (int j = 0; j < dimension; j++) {
@@ -226,7 +226,7 @@ void check_results(long long* result1, long long* result2, int dimension);
     // multiply with CSR format - parallel
         
         for(int i = 0; i < iterations; i++){
-            #pragma omp parallel for num_threads(threads) schedule(static) default(none) shared(dimension, row_indeces, column_indeces, non_zero_values, current_vec, result)
+            #pragma omp parallel for num_threads(threads) schedule(runtime) default(none) shared(dimension, row_indeces, column_indeces, non_zero_values, current_vec, result)
                 for(int row = 0; row < dimension; row++){
                     long long sum = 0;
                     // this way we know exactly how many non-zero elements to process in this row
@@ -292,7 +292,7 @@ void check_results(long long* result1, long long* result2, int dimension);
 
     // multiply with dense way for comparison
      for(int i = 0; i < iterations; i++){
-        #pragma omp parallel for num_threads(threads) schedule(static) default(none) shared(dimension, matrix, current_vec, result)
+        #pragma omp parallel for num_threads(threads) schedule(runtime) default(none) shared(dimension, matrix, current_vec, result)
             for(int row = 0; row < dimension; row++){
                 long long sum = 0;
                 for(int col = 0; col < dimension; col++){
@@ -314,7 +314,7 @@ void check_results(long long* result1, long long* result2, int dimension);
     // check if results are the same
     check_results(results1, current_vec, dimension);
     
-    printf("Initialization Time: %f seconds\n", end_init - start_init);
+    printf("Initialization Parallel Time: %f seconds\n", end_init - start_init);
     printf("Initialization Serial Time: %f seconds\n", end_init_serial - start_init_serial);
     printf("Parallel CSR Multiplication Time: %f seconds\n", end_parallel_csr - start_parallel_csr);
     printf("Serial CSR Multiplication Time: %f seconds\n", end_serial_csr - start_serial_csr);
