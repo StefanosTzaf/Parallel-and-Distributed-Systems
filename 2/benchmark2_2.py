@@ -34,7 +34,7 @@ DEFAULT_ITERATIONS = 10
 DEFAULT_THREADS = 4
 DEFAULT_DIM = 10000
 
-time_pattern = re.compile(r"(Initialization|Initialization Serial|Parallel CSR Multiplication|Serial CSR Multiplication|Parallel Dense Multiplication) Time: ([0-9.eE+-]+)")
+time_pattern = re.compile(r"(Initialization Parallel|Initialization Serial|Parallel CSR Multiplication|Serial CSR Multiplication|Parallel Dense Multiplication) Time: ([0-9.eE+-]+)")
 
 NUM_RUNS = 4  # Number of times to run each benchmark for averaging
 
@@ -42,7 +42,7 @@ NUM_RUNS = 4  # Number of times to run each benchmark for averaging
 def run_case(dimension: int, sparsity: int, iterations: int, threads: int, schedule: str = STATIC_SCHEDULE, uneven: bool = False):
     """Run benchmark NUM_RUNS times and return average timings."""
     all_times = {
-        "Initialization": [],
+        "Initialization Parallel": [],
         "Initialization Serial": [],
         "Parallel CSR Multiplication": [],
         "Serial CSR Multiplication": [],
@@ -148,7 +148,7 @@ def plot_threads(csv_path: Path):
     df = pd.read_csv(csv_path)
     for dim, g in df.groupby("dimension"):
         plt.figure()
-        csr_parallel_total = g["Initialization Time"] + g["Parallel CSR Multiplication Time"]
+        csr_parallel_total = g["Initialization Parallel Time"] + g["Parallel CSR Multiplication Time"]
         csr_serial_total = g["Initialization Serial Time"] + g["Serial CSR Multiplication Time"]
         plt.plot(g["threads"], csr_parallel_total, marker="o", label="CSR parallel")
         plt.plot(g["threads"], csr_serial_total, marker="o", label="CSR serial")
@@ -168,7 +168,7 @@ def plot_sparsity(csv_path: Path):
     import pandas as pd
     df = pd.read_csv(csv_path)
     plt.figure()
-    csr_parallel_total = df["Initialization Time"] + df["Parallel CSR Multiplication Time"]
+    csr_parallel_total = df["Initialization Parallel Time"] + df["Parallel CSR Multiplication Time"]
     csr_serial_total = df["Initialization Serial Time"] + df["Serial CSR Multiplication Time"]
     plt.plot(df["sparsity"], csr_parallel_total, marker="o", label="CSR parallel")
     plt.plot(df["sparsity"], csr_serial_total, marker="o", label="CSR serial")
@@ -188,7 +188,7 @@ def plot_iterations(csv_path: Path):
     import pandas as pd
     df = pd.read_csv(csv_path)
     plt.figure()
-    csr_parallel_total = df["Initialization Time"] + df["Parallel CSR Multiplication Time"]
+    csr_parallel_total = df["Initialization Parallel Time"] + df["Parallel CSR Multiplication Time"]
     csr_serial_total = df["Initialization Serial Time"] + df["Serial CSR Multiplication Time"]
     plt.plot(df["iterations"], csr_parallel_total, marker="o", label="CSR parallel")
     plt.plot(df["iterations"], csr_serial_total, marker="o", label="CSR serial")
@@ -229,7 +229,7 @@ def plot_nonuniform_sparsity(csv_path: Path, schedule: str):
     import pandas as pd
     df = pd.read_csv(csv_path)
     plt.figure()
-    csr_parallel_total = df["Initialization Time"] + df["Parallel CSR Multiplication Time"]
+    csr_parallel_total = df["Initialization Parallel Time"] + df["Parallel CSR Multiplication Time"]
     csr_serial_total = df["Initialization Serial Time"] + df["Serial CSR Multiplication Time"]
     plt.plot(df["sparsity"], csr_parallel_total, marker="o", label="CSR parallel")
     plt.plot(df["sparsity"], csr_serial_total, marker="o", label="CSR serial")
@@ -273,7 +273,7 @@ def plot_uniform_sparsity_high(csv_path: Path, schedule: str):
     import pandas as pd
     df = pd.read_csv(csv_path)
     plt.figure()
-    csr_parallel_total = df["Initialization Time"] + df["Parallel CSR Multiplication Time"]
+    csr_parallel_total = df["Initialization Parallel Time"] + df["Parallel CSR Multiplication Time"]
     csr_serial_total = df["Initialization Serial Time"] + df["Serial CSR Multiplication Time"]
     plt.plot(df["sparsity"], csr_parallel_total, marker="o", label="CSR parallel")
     plt.plot(df["sparsity"], csr_serial_total, marker="o", label="CSR serial")
