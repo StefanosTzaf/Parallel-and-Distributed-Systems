@@ -31,8 +31,8 @@ int main(int argc, char* argv[]){
         array[i] = rand() % 100;
     }
 
-    struct timespec start, end;
-    clock_gettime(CLOCK_REALTIME, &start);
+    double start, end;
+    start = omp_get_wtime();
 
     printf("--------------------\n");
 
@@ -57,11 +57,11 @@ int main(int argc, char* argv[]){
             }
         }        
     }
-    clock_gettime(CLOCK_REALTIME, &end);
+    end = omp_get_wtime();
 
-    double totalTime = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    double totalTime = end - start;
 
-    printf("Time: %f\n", totalTime);
+    printf("Time: %.5f\n", totalTime);
     printf("----------------------------\n");
 
 
