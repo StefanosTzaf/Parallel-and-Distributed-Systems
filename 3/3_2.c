@@ -24,6 +24,7 @@ void non_uniform_distribution(int**, long long*, int, float, unsigned int*);
 //Initialize matrix and vector with random values and zeros
 void uniform_distribution(int**, long long*, int, float, unsigned int*);
 
+// executes matrix-vector multiplication in CSR format serially
 void serial_CSR_multiplication(int**, long long*, long long*, long long*, int, int, int*, int*, int*);
 
 
@@ -353,11 +354,6 @@ int main(int argc, char* argv[]){
 
     // Broadcast serial multiplication time by process 0 to all processes
     MPI_Bcast(&serial_time_mult, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-    // Broadcast matrix rows to all processes for dense multiplication
-    for(int i = 0; i < dimension; i++){
-        MPI_Bcast(matrix[i], dimension, MPI_INT, 0, MPI_COMM_WORLD);
-    }
     
     send_end = MPI_Wtime();
     send_time += send_end - send_start;
@@ -437,6 +433,18 @@ int main(int argc, char* argv[]){
     double parallel_end_local = MPI_Wtime();
     double parallel_time_local = parallel_end_local - parallel_start_local;
     
+    // Save CSR parallel result on process 0 for verification
+    long long* csr_parallel_result = NULL;
+    if(my_rank == 0){
+        csr_parallel_result = malloc(sizeof(long long) * dimension);
+        if(csr_parallel_result == NULL){
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        for(int i = 0; i < dimension; i++){
+            csr_parallel_result[i] = current_vec[i];
+        }
+    }
 
     // reset current_vec to original vector for dense multiplication
     for(int i = 0; i < dimension; i++){
@@ -447,28 +455,28 @@ int main(int argc, char* argv[]){
     
     MPI_Barrier(MPI_COMM_WORLD);
     double dense_start = MPI_Wtime();
-    for(int iter = 0; iter < iterations; iter++){
-        // Each process computes its portion of rows
-        for(int row = row_start; row < row_end; row++){
+    // for(int iter = 0; iter < iterations; iter++){
+    //     // Each process computes its portion of rows
+    //     for(int row = row_start; row < row_end; row++){
             
-            long long sum = 0;
+    //         long long sum = 0;
             
-            for(int col = 0; col < dimension; col++){
-                sum += (long long)matrix[row][col] * current_vec[col];
-            }
+    //         for(int col = 0; col < dimension; col++){
+    //             sum += (long long)matrix[row][col] * current_vec[col];
+    //         }
             
-            local_result[row - row_start] = sum;   //local result index
-        }
+    //         local_result[row - row_start] = sum;   //local result index
+    //     }
         
-        // Gather all partial results into temp_result
-        MPI_Allgatherv(local_result, local_rows, MPI_LONG_LONG, temp_result, 
-            recv_counts, displs, MPI_LONG_LONG, MPI_COMM_WORLD);
+    //     // Gather all partial results into temp_result
+    //     MPI_Allgatherv(local_result, local_rows, MPI_LONG_LONG, temp_result, 
+    //         recv_counts, displs, MPI_LONG_LONG, MPI_COMM_WORLD);
             
-            // Swap pointers for next iteration
-            long long* swap = current_vec;
-            current_vec = temp_result;
-            temp_result = swap;
-        }
+    //         // Swap pointers for next iteration
+    //         long long* swap = current_vec;
+    //         current_vec = temp_result;
+    //         temp_result = swap;
+    //     }
         double dense_end = MPI_Wtime();
         double dense_time_local = dense_end - dense_start;
         
@@ -481,7 +489,7 @@ int main(int argc, char* argv[]){
         // Verification and output
         if(my_rank == 0){
             // Verify results match
-            bool match = verify_results(result, current_vec, dimension);
+            bool match = verify_results(result, csr_parallel_result, dimension);
             
             if(match){
                 printf("Results match!\n");
@@ -519,6 +527,10 @@ int main(int argc, char* argv[]){
     free(row_indeces_serial);
     free(vector);
     free(current_vec);
+    free(temp_result);
+    if(my_rank == 0){
+        free(csr_parallel_result);
+    }
     free(local_result);
     free(local_values);
     free(local_columns);
@@ -580,8 +592,6 @@ void uniform_distribution(int** matrix, long long* vector, int dimension, float 
 
 void serial_CSR_multiplication(int** matrix, long long* vector, long long* current_vec, long long* result, int dimension, int iterations, 
     int* row_indeces_serial, int* non_zero_values_serial, int* column_indeces_serial){
-    
-    double start_serial_mult = MPI_Wtime();
 
     for(int i = 0; i < iterations; i++){
         for(int row = 0; row < dimension; row++){
@@ -601,12 +611,7 @@ void serial_CSR_multiplication(int** matrix, long long* vector, long long* curre
         result = temp;   
     }
 
-    // Save final serial result to result array (current_vec has final result after swapping)
-    for(int i = 0; i < dimension; i++){
-        result[i] = current_vec[i];
-    }
-
-    // re-initialize current_vec with the original input vector values for parallel computation
+    // re-initialize current_vec with the original input vector values
     for(int i = 0; i < dimension; i++){
         current_vec[i] = vector[i];
     }
