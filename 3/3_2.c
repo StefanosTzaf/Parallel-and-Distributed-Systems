@@ -10,13 +10,13 @@
 bool verify_results(long long*, long long*, int);
 
 // Pack zeros at the beginning of the matrix
-void non_uniform_distribution(int**, long long*, int, float, unsigned int*);
+void non_uniform_distribution(int*, long long*, int, float, unsigned int*);
 
 //Initialize matrix and vector with random values and zeros
-void uniform_distribution(int**, long long*, int, float, unsigned int*);
+void uniform_distribution(int*, long long*, int, float, unsigned int*);
 
 // executes matrix-vector multiplication in CSR format serially
-void serial_CSR_multiplication(int**, long long*, long long*, long long*, int, int, int*, int*, int*);
+void serial_CSR_multiplication(int*, long long*, long long*, long long*, int, int, int*, int*, int*);
 
 
 int main(int argc, char* argv[]){
@@ -60,7 +60,7 @@ int main(int argc, char* argv[]){
     // only process 0 needs memory for these, but they still
     // should be NULL for the rest of the processes for
     // the scatter and broadcast calls
-    int** matrix = NULL;
+    int* matrix = NULL;
     int* non_zero_values_serial = NULL; // 1st CSR array
     int* column_indeces_serial = NULL; // 2nd CSR array
     long long* result = NULL; // result vector for serial multiplication
@@ -86,22 +86,10 @@ int main(int argc, char* argv[]){
 
     if(my_rank == 0){
         // MATRIX NxN ALLOCATION: allocate contiguously for MPI_Scatterv
-        matrix = (int**)malloc(dimension * sizeof(int*));
+        matrix = (int*)malloc(dimension * dimension * sizeof(int*));
         if(matrix == NULL){
             printf("Memory allocation failed\n");
             return 1;
-        }
-        
-        // Allocate one contiguous block for all matrix data
-        int* matrix_data_block = (int*)malloc(dimension * dimension * sizeof(int));
-        if(matrix_data_block == NULL){
-            printf("Memory allocation failed\n");
-            return 1;
-        }
-        
-        // Set up row pointers into the contiguous block
-        for(int i = 0; i < dimension; i++){
-            matrix[i] = matrix_data_block + i * dimension;
         }
      
 
@@ -143,7 +131,7 @@ int main(int argc, char* argv[]){
         for (int i = 0; i < dimension; i++) {
             int count = 0;
             for (int j = 0; j < dimension; j++) {
-                if (matrix[i][j] != 0){
+                if (matrix[i * dimension + j] != 0){
                     count++;
                 } 
             }
@@ -173,8 +161,8 @@ int main(int argc, char* argv[]){
           
             for (int j = 0; j < dimension; j++) {
             
-                if (matrix[i][j] != 0) {
-                    non_zero_values_serial[idx]  = matrix[i][j];
+                if (matrix[i * dimension + j] != 0) {
+                    non_zero_values_serial[idx]  = matrix[i * dimension + j];
                     column_indeces_serial[idx] = j;
                     idx++;
                 }
@@ -396,9 +384,8 @@ int main(int argc, char* argv[]){
     // Scatter the rows of the matrix to all processes for dense multiplication
     // they might not be exactly equal due to remaining rows so use of scatterv
     // Note: sendbuf only matters at root, but we need valid pointers
-    int* matrix_data = (my_rank == 0) ? &(matrix[0][0]) : NULL;
     
-    MPI_Scatterv(matrix_data, local_elements_counts_array, local_element_offsets, MPI_INT, 
+    MPI_Scatterv(matrix, local_elements_counts_array, local_element_offsets, MPI_INT, 
         local_matrix, local_elements, MPI_INT, 0, MPI_COMM_WORLD);
     
     send_end = MPI_Wtime();
@@ -617,7 +604,6 @@ int main(int argc, char* argv[]){
         
         // Free matrix only on rank 0 (where it was allocated)
         // Matrix was allocated as contiguous block, so free matrix[0] which points to the block
-        free(matrix[0]);
         free(matrix);
     }
     
@@ -644,20 +630,20 @@ int main(int argc, char* argv[]){
 
 
 // Pack zeros at the beginning of the matrix
-void non_uniform_distribution(int** matrix, long long* vector, int dimension, float zero_percentage, unsigned int* seed){
+void non_uniform_distribution(int* matrix, long long* vector, int dimension, float zero_percentage, unsigned int* seed){
     int zero_elements = (int)((zero_percentage / 100.0) * dimension * dimension);
     int count = 0;
     
     for(int i = 0; i < dimension; i++){
         for(int j = 0; j < dimension; j++){
             if(count < zero_elements){
-                matrix[i][j] = 0;
+                matrix[i * dimension + j] = 0;
                 count++;
             }
             else{
                 bool sign = rand_r(seed) % 2;
                 int value = (rand_r(seed) % RAND_MAX) + 1;
-                matrix[i][j] = sign ? value : -value;
+                matrix[i * dimension + j] = sign ? value : -value;
             }
         }
         bool sign = rand_r(seed) % 2;
@@ -669,18 +655,18 @@ void non_uniform_distribution(int** matrix, long long* vector, int dimension, fl
 
 
 //Initialize matrix and vector with random values and zeros
-void uniform_distribution(int** matrix, long long* vector, int dimension, float zero_percentage, unsigned int* seed){
+void uniform_distribution(int* matrix, long long* vector, int dimension, float zero_percentage, unsigned int* seed){
     for(int i = 0; i < dimension; i++){
         for(int j = 0; j < dimension; j++){
             bool zero_element = ((rand_r(seed) % 100) < zero_percentage);
             if(zero_element){
-                matrix[i][j] = 0;
+                matrix[i * dimension + j] = 0;
             } 
             else {
                 bool sign = rand_r(seed) % 2;
                 // generate random non-zero value
                 int value = (rand_r(seed) % RAND_MAX) + 1;
-                matrix[i][j] = sign ? value : -value;
+                matrix[i * dimension + j] = sign ? value : -value;
             }
         }
         bool sign = rand_r(seed) % 2;
@@ -689,7 +675,7 @@ void uniform_distribution(int** matrix, long long* vector, int dimension, float 
     }
 }
 
-void serial_CSR_multiplication(int** matrix, long long* vector, long long* current_vec, long long* result, int dimension, int iterations, 
+void serial_CSR_multiplication(int* matrix, long long* vector, long long* current_vec, long long* result, int dimension, int iterations, 
     int* row_indeces_serial, int* non_zero_values_serial, int* column_indeces_serial){
 
     // Save original pointers
