@@ -3,23 +3,14 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdbool.h>
+#include <string.h>
 
 
 // Verify that serial and parallel results match
-bool verify_results(long long* serial_result, long long* parallel_result, int dimension){
-    for(int i = 0; i < dimension; i++){
-        if(serial_result[i] != parallel_result[i]){
-            printf("Mismatch at index %d: serial=%lld, parallel=%lld\n", 
-                   i, serial_result[i], parallel_result[i]);
-            return false;
-        }
-    }
-    return true;
-}
+bool verify_results(long long*, long long*, int);
 
 // Pack zeros at the beginning of the matrix
 void non_uniform_distribution(int**, long long*, int, float, unsigned int*);
-
 
 //Initialize matrix and vector with random values and zeros
 void uniform_distribution(int**, long long*, int, float, unsigned int*);
@@ -56,21 +47,6 @@ int main(int argc, char* argv[]){
     }
 
     //##### MEMORY ALLOCATIONS #####//
-    // MATRIX NxN ALLOCATION
-    int** matrix = (int**)malloc(dimension * sizeof(int*));
-    if(matrix == NULL){
-        printf("Memory allocation failed\n");
-        return 1;
-    }
-
-    for(int i = 0; i < dimension; i++){
-    
-        matrix[i] = (int*)malloc(dimension * sizeof(int));
-        if(matrix[i] == NULL){
-            printf("Memory allocation failed\n");
-            return 1;
-        }
-    } 
 
     // all processes should allocate memory for the row_indeces_serial
     // array because it will be used in broadcast
@@ -84,11 +60,12 @@ int main(int argc, char* argv[]){
     // only process 0 needs memory for these, but they still
     // should be NULL for the rest of the processes for
     // the scatter and broadcast calls
-    int* non_zero_values_serial = NULL;
-    int* column_indeces_serial = NULL;
+    int** matrix = NULL;
+    int* non_zero_values_serial = NULL; // 1st CSR array
+    int* column_indeces_serial = NULL; // 2nd CSR array
+    long long* result = NULL; // result vector for serial multiplication
 
-    // VECTOR Nx1 declare as long long to be able to easily assign it to results without copying 
-    // all processes need memory for this vector
+    // VECTOR Nx1: all processes need memory for it for the multiplication
     long long* vector = (long long*)malloc(dimension * sizeof(long long));
     if(vector == NULL){
         printf("Memory allocation failed\n");
@@ -96,18 +73,33 @@ int main(int argc, char* argv[]){
     }
 
     // we have to copy the initial vector to restore it later for dense multiplication
-    // is not counted in the time measurements because we only do it to be able to run both multiplications
-    long long* current_vec = (long long*)malloc(dimension * sizeof(long long));
-    long long* result = (long long*)malloc(dimension * sizeof(long long));
-    if((current_vec == NULL) || (result == NULL)){
+    long long* current_vec = (long long*)malloc(dimension * sizeof(long long));   
+    if((current_vec == NULL)){
         printf("Memory allocation failed\n");
         return 1;
     }
 
+    // Timing variables for initialization and serial multiplication
+    // used also for broadcasting to all processes the execution time of process 0
     double init_time = 0.0;
     double serial_time_mult = 0.0;
 
     if(my_rank == 0){
+        // MATRIX NxN ALLOCATION
+        matrix = (int**)malloc(dimension * sizeof(int*));
+        if(matrix == NULL){
+            printf("Memory allocation failed\n");
+            return 1;
+        }
+
+        for(int i = 0; i < dimension; i++){
+            matrix[i] = (int*)malloc(dimension * sizeof(int));
+            if(matrix[i] == NULL){
+                printf("Memory allocation failed\n");
+                return 1;
+            }
+        }
+     
 
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -120,7 +112,7 @@ int main(int argc, char* argv[]){
         if(argc == 5){
            
             if(argv[4][0] == 'y' || argv[4][0] == 'Y'){
-            
+
                 non_uniform_distribution(matrix, vector, dimension, zero_percentage, &seed);
             }
             else{
@@ -128,17 +120,17 @@ int main(int argc, char* argv[]){
                 return 1;
             }
         }
-
         //Initialize matrix and vector with random values and zeros
         else{
             uniform_distribution(matrix, vector, dimension, zero_percentage, &seed);
         }
 
+
         //##### INITIALIZATION OF CSR MATRICES #####//
         double start_init = MPI_Wtime();
         
-        // count of non-zero elements in each row
-        int *row_nnz_serial = malloc(dimension * sizeof(int));
+        // 1) count of non-zero elements in each row
+        int* row_nnz_serial = malloc(dimension * sizeof(int));
         if(row_nnz_serial == NULL){
             printf("Memory allocation failed\n");
             return 1;
@@ -154,7 +146,7 @@ int main(int argc, char* argv[]){
             row_nnz_serial[i] = count;
         }
        
-        // compute row_indeces
+        // 2) compute row_indeces
         row_indeces_serial[0] = 0;
         
         // equal to the number of non zero elements before the current row
@@ -163,7 +155,7 @@ int main(int argc, char* argv[]){
         }
         free(row_nnz_serial);
 
-        // 1st and 2nd CSR arrays
+        // 3) 1st and 2nd CSR arrays
         non_zero_values_serial = (int*)malloc(row_indeces_serial[dimension] * sizeof(int));
         column_indeces_serial = (int*)malloc(row_indeces_serial[dimension] * sizeof(int));
         if(non_zero_values_serial == NULL || column_indeces_serial == NULL){
@@ -197,6 +189,12 @@ int main(int argc, char* argv[]){
       
         //##### MULTIPLICATION OF MATRIX WITH VECTOR #####//
         // ################### SERIAL ####################//
+
+        result = (long long*)malloc(dimension * sizeof(long long));
+        if(result == NULL){
+            printf("Memory allocation failed\n");
+            return 1;
+        }
 
         double start_serial_mult = MPI_Wtime();
 
@@ -233,8 +231,10 @@ int main(int argc, char* argv[]){
             local_rows += 1;
         }
     }
+    
+    size_t local_elements = local_rows * dimension; // number of elements of each process for dense multiplication
 
-    // compute the start and end row for each process
+    // compute the start and end row for each process (global row indices)
     size_t row_start = 0;
     for(size_t curr_rank = 0; curr_rank < my_rank; curr_rank++){
         
@@ -246,7 +246,7 @@ int main(int argc, char* argv[]){
     }
     size_t row_end = row_start + local_rows;
 
-    // compute the corresponding non_zero_values_start and end
+    // compute the corresponding non_zero_values_start and end (global indices)
     size_t non_zero_values_start = row_indeces_serial[row_start];
     size_t non_zero_values_end = row_indeces_serial[row_end];
     
@@ -256,14 +256,21 @@ int main(int argc, char* argv[]){
     // allocate memory for the local values and columns
     int* local_values = malloc(sizeof(int) * local_non_zero_values_count);
     int* local_columns = malloc(sizeof(int) * local_non_zero_values_count);
-    if((local_values == NULL) || (local_columns == NULL)){
+
+    // local_matrix for dense multiplication needs to be contiguous
+    // it is allocated as 1D meaning the rows are stored one after the other [row0 row1 ... local_rows-1]
+    int* local_matrix = malloc(local_rows * dimension * sizeof(int));
+    if((local_values == NULL) || (local_columns == NULL) || (local_matrix == NULL)){
         printf("Memory allocation failed\n");
         return 1;
     }
     
     // only process 0 can pass these as arguments
-    int* local_nzv_count_root = NULL;
-    int* offsets = NULL;
+    int* local_nzv_counts_array = NULL;
+    int* local_rows_counts = NULL;
+    int* row_offsets = NULL;
+    int* local_elements_counts_array = NULL;
+    int* local_element_offsets = NULL;
 
     // Now that we now how many values each process should read
     // process 0 should scatter only those values 
@@ -273,15 +280,16 @@ int main(int argc, char* argv[]){
       
         int* row_starts_array = malloc(sizeof(int) * nprocs); // holds the start row each process should read from
         int* row_ends_array = malloc(sizeof(int) * nprocs); // holds the end row till which each process should read 
-        int* local_rows_array = malloc(sizeof(int) * nprocs); // holds the number of rows each process should read
-        local_nzv_count_root = malloc(sizeof(int) * nprocs); // holds the number of non zero values each process should read
+        local_rows_counts = malloc(sizeof(int) * nprocs); // holds the number of rows each process should read
+        local_nzv_counts_array = malloc(sizeof(int) * nprocs); // holds the number of non zero values each process should read
+        
         if((row_starts_array == NULL) || (row_ends_array == NULL) || 
-                (local_rows_array == NULL) || (local_nzv_count_root == NULL)){
+                (local_rows_counts == NULL) || (local_nzv_counts_array == NULL)){
             printf("Memory allocation failed\n");
             return 1;
         }
 
-        // calculate number of local rows for each process
+        // 1) calculate number of local rows for each process
         for(int rank = 0; rank < nprocs; rank++){
         
             size_t rows = rows_per_process;
@@ -294,53 +302,79 @@ int main(int argc, char* argv[]){
                     rows += 1;
                 }
             }
-            local_rows_array[rank] = rows;
+            local_rows_counts[rank] = rows;
         }
 
-        // calculate start and end row for each process
+        // 2) calculate start and end row for each process
         size_t row_start = 0;
         for(int rank = 0; rank < nprocs; rank++){
             
             row_starts_array[rank] = row_start;
 
-            row_start += local_rows_array[rank];
+            row_start += local_rows_counts[rank];
 
             row_ends_array[rank] = row_start;
         }
 
-        offsets = malloc(sizeof(int) * nprocs);
-        if(offsets == NULL){
+        // 3) number of non zero values for each process
+        for(int rank = 0; rank < nprocs; rank++){
+            local_nzv_counts_array[rank] = row_indeces_serial[row_ends_array[rank]] - row_indeces_serial[row_starts_array [rank]];
+        }
+        
+        // 4) offsets for scattering the non zero values and column indeces
+        // basically: from which index each process should start reading
+        row_offsets = malloc(sizeof(int) * nprocs);
+        if(row_offsets == NULL){
             printf("Memory allocation failed\n");
             return 1;
         }
-        
-        // number of non zero values for each process
-        for(int rank = 0; rank < nprocs; rank++){
-            local_nzv_count_root[rank] = row_indeces_serial[row_ends_array[rank]] - row_indeces_serial[row_starts_array [rank]];
-        }
-        
-        // where each count begins in the non_zero_values_serial
-        offsets[0] = 0;
+        row_offsets[0] = 0;
         for(int rank = 1; rank < nprocs; rank++){
-            offsets[rank] = offsets[rank-1] + local_nzv_count_root[rank-1];
+            row_offsets[rank] = row_offsets[rank-1] + local_nzv_counts_array[rank-1];
         }
 
+        //######## this data is needed for scattering the dense matrix later
+
+        // 1) number of elements each process should read
+        local_elements_counts_array = malloc(sizeof(int) * nprocs);
+        if(local_elements_counts_array == NULL){
+            printf("Memory allocation failed\n");
+            return 1;
+        }
+
+        for(int rank = 0; rank < nprocs; rank++){
+            local_elements_counts_array[rank] = local_rows_counts[rank] * dimension;
+        }
+
+        // 2) offsets for elements: from which element each process should start reading
+        local_element_offsets = malloc(sizeof(int) * nprocs);
+        if(local_element_offsets == NULL){
+            printf("Memory allocation failed\n");
+            return 1;
+        }
+
+        local_element_offsets[0] = 0;
+        for(int rank = 1; rank < nprocs; rank++){
+            local_element_offsets[rank] = local_element_offsets[rank-1] + local_elements_counts_array[rank-1];
+        }
+        
         free(row_starts_array);
         free(row_ends_array);
-        free(local_rows_array);
 
     }
+
+    //##### DISTRIBUTION OF DATA TO ALL PROCESSES #####//
 
     MPI_Barrier(MPI_COMM_WORLD);
 
     send_start = MPI_Wtime();
 
     // scatter the non zero values
-    MPI_Scatterv(non_zero_values_serial, local_nzv_count_root, offsets, MPI_INT, local_values, 
+    MPI_Scatterv(non_zero_values_serial, local_nzv_counts_array, row_offsets, MPI_INT, local_values, 
         local_non_zero_values_count, MPI_INT, 0, MPI_COMM_WORLD); 
         
     // scatter the column indeces        
-    MPI_Scatterv(column_indeces_serial, local_nzv_count_root, offsets, MPI_INT, local_columns, 
+    MPI_Scatterv(column_indeces_serial, local_nzv_counts_array, row_offsets, MPI_INT, local_columns, 
             local_non_zero_values_count, MPI_INT, 0 , MPI_COMM_WORLD);
             
     // Broadcast the vector, since every process needs it
@@ -354,6 +388,14 @@ int main(int argc, char* argv[]){
 
     // Broadcast serial multiplication time by process 0 to all processes
     MPI_Bcast(&serial_time_mult, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    // Scatter the rows of the matrix to all processes for dense multiplication
+    // they might not be exactly equal due to remaining rows so use of scatterv
+    // Note: sendbuf only matters at root, but we need valid pointers
+    int* matrix_data = (my_rank == 0) ? &(matrix[0][0]) : NULL;
+    
+    MPI_Scatterv(matrix_data, local_elements_counts_array, local_element_offsets, MPI_INT, 
+        local_matrix, local_elements, MPI_INT, 0, MPI_COMM_WORLD);
     
     send_end = MPI_Wtime();
     send_time += send_end - send_start;
@@ -362,6 +404,8 @@ int main(int argc, char* argv[]){
     //################### PARALLEL ##################//
     
     // Prepare recv_counts and displs for Allgatherv (needed by all processes)
+    // recv_counts: how many rows each process will send
+    // displs: displacements in the final array where each process data will go
     int* recv_counts = malloc(sizeof(int) * nprocs);
     int* displs = malloc(sizeof(int) * nprocs);
     if(recv_counts == NULL || displs == NULL){
@@ -381,15 +425,16 @@ int main(int argc, char* argv[]){
         disp += rows;
     }
     
-    
+    // local result array for each process
     long long* local_result = malloc(sizeof(long long) * local_rows);
     if(local_result == NULL){
         printf("Memory allocation failed\n");
         return 1;
     }
     
-    long long* temp_result = malloc(sizeof(long long) * dimension);
-    if(temp_result == NULL){
+    // parallel result array to gather all results
+    long long* csr_parallel_result = malloc(sizeof(long long) * dimension);
+    if(csr_parallel_result == NULL){
         printf("Memory allocation failed\n");
         return 1;
     }
@@ -398,6 +443,10 @@ int main(int argc, char* argv[]){
     
     MPI_Barrier(MPI_COMM_WORLD);
     double parallel_start_local = MPI_Wtime();
+
+    // Save original pointers for restoration after swapping
+    long long* original_current_vec = current_vec;
+    long long* original_csr_parallel_result = csr_parallel_result;
 
     for(int iter = 0; iter < iterations; iter++){
         // Each process computes its portion of rows
@@ -420,65 +469,84 @@ int main(int argc, char* argv[]){
             local_result[row - row_start] = sum;   //local result index
         }
         
-        // Gather all partial results into temp_result
-        MPI_Allgatherv(local_result, local_rows, MPI_LONG_LONG, temp_result, 
+        // Gather all partial results into csr_parallel_result
+        MPI_Allgatherv(local_result, local_rows, MPI_LONG_LONG, csr_parallel_result, 
             recv_counts, displs, MPI_LONG_LONG, MPI_COMM_WORLD);
         
         // Swap pointers for next iteration
-        long long* swap = current_vec;
-        current_vec = temp_result;
-        temp_result = swap;
+        long long* temp = current_vec;
+        current_vec = csr_parallel_result;
+        csr_parallel_result = temp;
+    }
+
+    // After iterations swaps: if odd, result is in current_vec; if even, result is in csr_parallel_result
+    // We want result in original_csr_parallel_result for verification
+    if(iterations % 2 == 1) {
+        memcpy(original_csr_parallel_result, current_vec, dimension * sizeof(long long));
     }
 
     double parallel_end_local = MPI_Wtime();
     double parallel_time_local = parallel_end_local - parallel_start_local;
-    
-    // Save CSR parallel result on process 0 for verification
-    long long* csr_parallel_result = NULL;
-    if(my_rank == 0){
-        csr_parallel_result = malloc(sizeof(long long) * dimension);
-        if(csr_parallel_result == NULL){
-            MPI_Abort(MPI_COMM_WORLD, 1);
-        }
 
-        for(int i = 0; i < dimension; i++){
-            csr_parallel_result[i] = current_vec[i];
-        }
-    }
-
-    // reset current_vec to original vector for dense multiplication
+    // reset original_current_vec to original vector for dense multiplication
+    // and restore current_vec pointer
     for(int i = 0; i < dimension; i++){
-        current_vec[i] = vector[i];
+        original_current_vec[i] = vector[i];
+    }
+    current_vec = original_current_vec;
+    csr_parallel_result = original_csr_parallel_result;
+    
+    
+    
+    //##### PREPARATION OF LOCAL DATA FOR DENSE EXECUTION #####//
+    long long* local_result_dense = malloc(sizeof(long long) * local_rows);
+    if(local_result_dense == NULL){
+        printf("Memory allocation failed\n");
+        return 1;
     }
     
+    long long* csr_dense_result = malloc(sizeof(long long) * dimension);
+    if(csr_dense_result == NULL){
+        printf("Memory allocation failed\n");
+        return 1;
+    }
+
     //##### DENSE MULTIPLICATION #####//
-    
     MPI_Barrier(MPI_COMM_WORLD);
     double dense_start = MPI_Wtime();
-    // for(int iter = 0; iter < iterations; iter++){
-    //     // Each process computes its portion of rows
-    //     for(int row = row_start; row < row_end; row++){
+    for(int iter = 0; iter < iterations; iter++){
+        // Each process computes its portion of rows
+        for(int row = row_start; row < row_end; row++){
             
-    //         long long sum = 0;
+            long long sum = 0;
             
-    //         for(int col = 0; col < dimension; col++){
-    //             sum += (long long)matrix[row][col] * current_vec[col];
-    //         }
+            for(int col = 0; col < dimension; col++){
+                // access local_matrix as 1D array
+                sum += (long long)local_matrix[(row - row_start) * dimension + col] * current_vec[col];
+            }
             
-    //         local_result[row - row_start] = sum;   //local result index
-    //     }
+            local_result_dense[row - row_start] = sum;   //local result index
+        }
         
-    //     // Gather all partial results into temp_result
-    //     MPI_Allgatherv(local_result, local_rows, MPI_LONG_LONG, temp_result, 
-    //         recv_counts, displs, MPI_LONG_LONG, MPI_COMM_WORLD);
+        // Gather all partial results into temp_result
+        MPI_Allgatherv(local_result_dense, local_rows, MPI_LONG_LONG, csr_dense_result, 
+            recv_counts, displs, MPI_LONG_LONG, MPI_COMM_WORLD);
             
-    //         // Swap pointers for next iteration
-    //         long long* swap = current_vec;
-    //         current_vec = temp_result;
-    //         temp_result = swap;
-    //     }
+            // Swap pointers for next iteration
+            long long* swap = current_vec;
+            current_vec = csr_dense_result;
+            csr_dense_result = swap;
+    }
         double dense_end = MPI_Wtime();
         double dense_time_local = dense_end - dense_start;
+        
+        // After iterations swaps, current_vec points to the final result
+        // Copy it to csr_dense_result 
+        for(int i = 0; i < dimension; i++){
+            csr_dense_result[i] = current_vec[i];
+        }
+    
+        
         
         // Reduce to get max times across all processes
         double max_parallel_time, max_send_time, max_dense_time;
@@ -490,21 +558,27 @@ int main(int argc, char* argv[]){
         if(my_rank == 0){
             // Verify results match
             bool match = verify_results(result, csr_parallel_result, dimension);
+            bool dense_match = verify_results(result, csr_dense_result, dimension);
             
-            if(match){
+            if(match && dense_match){
                 printf("Results match!\n");
             }
-        else{
-            printf("Results do NOT match!\n");
+            else{
+                if(!match)
+                    printf("CSR Parallel Results do NOT match!\n");
+                if(!dense_match)
+                    printf("Dense Parallel Results do NOT match!\n");
+            }
+            
+            printf("========================================\n");
+            printf("Serial initialization time: %f seconds\n", init_time);
+            printf("Serial multiplication time: %f seconds\n", serial_time_mult);
+            printf("Max time to send data: %f seconds\n", max_send_time);
+            printf("Max parallel multiplication time: %f seconds\n", max_parallel_time);
+            printf("Total Parallel Time: %f seconds\n", max_send_time + max_parallel_time + init_time);
+            printf("Max dense multiplication time: %f seconds\n", max_dense_time);
+            printf("=========================================\n");
         }
-        
-        printf("Serial initialization time: %f seconds\n", init_time);
-        printf("Serial multiplication time: %f seconds\n", serial_time_mult);
-        printf("Max time to send data: %f seconds\n", max_send_time);
-        printf("Max parallel multiplication time: %f seconds\n", max_parallel_time);
-        printf("Total Parallel Time: %f seconds\n", max_send_time + max_parallel_time + init_time);
-        printf("Max dense multiplication time: %f seconds\n", max_dense_time);
-    }
 
 
 
@@ -512,26 +586,31 @@ int main(int argc, char* argv[]){
 
     
     if (my_rank == 0) {
-        free(local_nzv_count_root);
-        free(offsets);
+        free(local_nzv_counts_array);
+        free(row_offsets);
+        free(local_elements_counts_array);
+        free(local_element_offsets);
         free(non_zero_values_serial);
         free(column_indeces_serial);
         free(result);
+        
+        // Free matrix only on rank 0 (where it was allocated)
+        for(int i = 0; i < dimension; i++){
+            free(matrix[i]);
+        }
+        free(matrix);
     }
     
-    // All processes now have matrix allocated
-    for(int i = 0; i < dimension; i++){
-        free(matrix[i]);
-    }
-    free(matrix);
+    // Free local matrix on all processes
+    free(local_matrix);
+    
     free(row_indeces_serial);
     free(vector);
     free(current_vec);
-    free(temp_result);
-    if(my_rank == 0){
-        free(csr_parallel_result);
-    }
+    free(csr_parallel_result);
+    free(csr_dense_result);
     free(local_result);
+    free(local_result_dense);
     free(local_values);
     free(local_columns);
     free(recv_counts);
@@ -593,6 +672,10 @@ void uniform_distribution(int** matrix, long long* vector, int dimension, float 
 void serial_CSR_multiplication(int** matrix, long long* vector, long long* current_vec, long long* result, int dimension, int iterations, 
     int* row_indeces_serial, int* non_zero_values_serial, int* column_indeces_serial){
 
+    // Save original pointers
+    long long* original_result = result;
+    long long* original_current_vec = current_vec;
+    
     for(int i = 0; i < iterations; i++){
         for(int row = 0; row < dimension; row++){
             long long sum = 0;
@@ -603,17 +686,36 @@ void serial_CSR_multiplication(int** matrix, long long* vector, long long* curre
             result[row] = sum;
         }
     
-        // Swap vectors and do not copy
+        // Swap vectors for next iteration
         long long* temp = current_vec;
         current_vec = result;
         // now current_vec points to the result as new input and result to the old
         // just so as not to write to the same array
         result = temp;   
     }
-
-    // re-initialize current_vec with the original input vector values
-    for(int i = 0; i < dimension; i++){
-        current_vec[i] = vector[i];
+    
+    // After iterations swaps: if odd, result is in current_vec; if even, result is in result
+    // We want result in original_result (the buffer the caller passed)
+    if(iterations % 2 == 1) {
+        // current_vec has the final result, need to copy to original_result
+        memcpy(original_result, current_vec, dimension * sizeof(long long));
     }
 
+    // re-initialize the original current_vec with the original input vector values
+    for(int i = 0; i < dimension; i++){
+        original_current_vec[i] = vector[i];
+    }
+
+}
+
+
+bool verify_results(long long* serial_result, long long* parallel_result, int dimension){
+    for(int i = 0; i < dimension; i++){
+        if(serial_result[i] != parallel_result[i]){
+            printf("Mismatch at index %d: serial=%lld, parallel=%lld\n", 
+                   i, serial_result[i], parallel_result[i]);
+            return false;
+        }
+    }
+    return true;
 }
