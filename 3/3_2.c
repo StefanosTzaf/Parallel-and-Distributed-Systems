@@ -375,12 +375,6 @@ int main(int argc, char* argv[]){
     // Broadcast current_vec (initialized by process 0) to all processes
     MPI_Bcast(current_vec, dimension, MPI_LONG_LONG, 0, MPI_COMM_WORLD);
 
-    // Broadcast initialization time by process 0 to all processes
-    MPI_Bcast(&init_time, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-    // Broadcast serial multiplication time by process 0 to all processes
-    MPI_Bcast(&serial_time_mult, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
     // Scatter the rows of the matrix to all processes for dense multiplication
     // they might not be exactly equal due to remaining rows so use of scatterv
     // Note: sendbuf only matters at root, but we need valid pointers
