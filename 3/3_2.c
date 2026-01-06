@@ -85,19 +85,23 @@ int main(int argc, char* argv[]){
     double serial_time_mult = 0.0;
 
     if(my_rank == 0){
-        // MATRIX NxN ALLOCATION
+        // MATRIX NxN ALLOCATION: allocate contiguously for MPI_Scatterv
         matrix = (int**)malloc(dimension * sizeof(int*));
         if(matrix == NULL){
             printf("Memory allocation failed\n");
             return 1;
         }
-
+        
+        // Allocate one contiguous block for all matrix data
+        int* matrix_data_block = (int*)malloc(dimension * dimension * sizeof(int));
+        if(matrix_data_block == NULL){
+            printf("Memory allocation failed\n");
+            return 1;
+        }
+        
+        // Set up row pointers into the contiguous block
         for(int i = 0; i < dimension; i++){
-            matrix[i] = (int*)malloc(dimension * sizeof(int));
-            if(matrix[i] == NULL){
-                printf("Memory allocation failed\n");
-                return 1;
-            }
+            matrix[i] = matrix_data_block + i * dimension;
         }
      
 
@@ -479,10 +483,14 @@ int main(int argc, char* argv[]){
         csr_parallel_result = temp;
     }
 
-    // After iterations swaps: if odd, result is in current_vec; if even, result is in csr_parallel_result
+    // After iterations swaps: result is always in current_vec after the swap
+    // If even iterations: current_vec points to original_current_vec buffer
+    // If odd iterations: current_vec points to original_csr_parallel_result buffer
     // We want result in original_csr_parallel_result for verification
-    if(iterations % 2 == 1) {
-        memcpy(original_csr_parallel_result, current_vec, dimension * sizeof(long long));
+    if(iterations % 2 == 0) {
+        for(int i = 0; i < dimension; i++){
+            original_csr_parallel_result[i] = current_vec[i];
+        }
     }
 
     double parallel_end_local = MPI_Wtime();
@@ -514,6 +522,11 @@ int main(int argc, char* argv[]){
     //##### DENSE MULTIPLICATION #####//
     MPI_Barrier(MPI_COMM_WORLD);
     double dense_start = MPI_Wtime();
+    
+    // Save original pointers for restoration after swapping
+    long long* original_current_vec_dense = current_vec;
+    long long* original_csr_dense_result = csr_dense_result;
+    
     for(int iter = 0; iter < iterations; iter++){
         // Each process computes its portion of rows
         for(int row = row_start; row < row_end; row++){
@@ -528,57 +541,65 @@ int main(int argc, char* argv[]){
             local_result_dense[row - row_start] = sum;   //local result index
         }
         
-        // Gather all partial results into temp_result
+        // Gather all partial results into csr_dense_result
         MPI_Allgatherv(local_result_dense, local_rows, MPI_LONG_LONG, csr_dense_result, 
             recv_counts, displs, MPI_LONG_LONG, MPI_COMM_WORLD);
             
-            // Swap pointers for next iteration
-            long long* swap = current_vec;
-            current_vec = csr_dense_result;
-            csr_dense_result = swap;
+        // Swap pointers for next iteration
+        long long* swap = current_vec;
+        current_vec = csr_dense_result;
+        csr_dense_result = swap;
     }
-        double dense_end = MPI_Wtime();
-        double dense_time_local = dense_end - dense_start;
-        
-        // After iterations swaps, current_vec points to the final result
-        // Copy it to csr_dense_result 
-        for(int i = 0; i < dimension; i++){
-            csr_dense_result[i] = current_vec[i];
+    double dense_end = MPI_Wtime();
+    double dense_time_local = dense_end - dense_start;
+    
+    // After iterations swaps: if even, result is in current_vec (original current_vec buffer)
+    // if odd, result is in current_vec (original csr_dense_result buffer)
+    // We want result in original_csr_dense_result for verification
+    if(iterations % 2 == 0) {
+        for (size_t i = 0; i < dimension; i++){
+            original_csr_dense_result[i] = current_vec[i];
         }
+        
+    }
+    
+    // Restore pointers for proper cleanup
+    current_vec = original_current_vec_dense;
+    csr_dense_result = original_csr_dense_result;
     
         
+
+    // Reduce to get max times across all processes
+    double max_parallel_time, max_send_time, max_dense_time;
+    MPI_Reduce(&parallel_time_local, &max_parallel_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&send_time, &max_send_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&dense_time_local, &max_dense_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    
+    // Verification and output
+    if(my_rank == 0){
+        // Verify results match
+        bool match = verify_results(result, csr_parallel_result, dimension);
+        bool dense_match = verify_results(result, csr_dense_result, dimension);
         
-        // Reduce to get max times across all processes
-        double max_parallel_time, max_send_time, max_dense_time;
-        MPI_Reduce(&parallel_time_local, &max_parallel_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-        MPI_Reduce(&send_time, &max_send_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-        MPI_Reduce(&dense_time_local, &max_dense_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-        
-        // Verification and output
-        if(my_rank == 0){
-            // Verify results match
-            bool match = verify_results(result, csr_parallel_result, dimension);
-            bool dense_match = verify_results(result, csr_dense_result, dimension);
-            
-            if(match && dense_match){
-                printf("Results match!\n");
-            }
-            else{
-                if(!match)
-                    printf("CSR Parallel Results do NOT match!\n");
-                if(!dense_match)
-                    printf("Dense Parallel Results do NOT match!\n");
-            }
-            
-            printf("========================================\n");
-            printf("Serial initialization time: %f seconds\n", init_time);
-            printf("Serial multiplication time: %f seconds\n", serial_time_mult);
-            printf("Max time to send data: %f seconds\n", max_send_time);
-            printf("Max parallel multiplication time: %f seconds\n", max_parallel_time);
-            printf("Total Parallel Time: %f seconds\n", max_send_time + max_parallel_time + init_time);
-            printf("Max dense multiplication time: %f seconds\n", max_dense_time);
-            printf("=========================================\n");
+        if(match && dense_match){
+            printf("Results match!\n");
         }
+        else{
+            if(!match)
+                printf("CSR Parallel Results do NOT match!\n");
+            if(!dense_match)
+                printf("Dense Parallel Results do NOT match!\n");
+        }
+        
+        printf("========================================\n");
+        printf("Serial initialization time: %f seconds\n", init_time);
+        printf("Serial multiplication time: %f seconds\n", serial_time_mult);
+        printf("Max time to send data: %f seconds\n", max_send_time);
+        printf("Max parallel multiplication time: %f seconds\n", max_parallel_time);
+        printf("Total Parallel Time: %f seconds\n", max_send_time + max_parallel_time + init_time);
+        printf("Max dense multiplication time: %f seconds\n", max_dense_time);
+        printf("=========================================\n");
+    }
 
 
 
@@ -595,9 +616,8 @@ int main(int argc, char* argv[]){
         free(result);
         
         // Free matrix only on rank 0 (where it was allocated)
-        for(int i = 0; i < dimension; i++){
-            free(matrix[i]);
-        }
+        // Matrix was allocated as contiguous block, so free matrix[0] which points to the block
+        free(matrix[0]);
         free(matrix);
     }
     
@@ -694,11 +714,15 @@ void serial_CSR_multiplication(int** matrix, long long* vector, long long* curre
         result = temp;   
     }
     
-    // After iterations swaps: if odd, result is in current_vec; if even, result is in result
+    // After iterations swaps: result is always in current_vec after the swap
+    // If odd iterations: current_vec points to original_result buffer (no copy needed)
+    // If even iterations: current_vec points to original_current_vec buffer (need copy)
     // We want result in original_result (the buffer the caller passed)
-    if(iterations % 2 == 1) {
+    if(iterations % 2 == 0) {
         // current_vec has the final result, need to copy to original_result
-        memcpy(original_result, current_vec, dimension * sizeof(long long));
+        for(int i = 0; i < dimension; i++){
+            original_result[i] = current_vec[i];
+        }
     }
 
     // re-initialize the original current_vec with the original input vector values
@@ -711,9 +735,10 @@ void serial_CSR_multiplication(int** matrix, long long* vector, long long* curre
 
 bool verify_results(long long* serial_result, long long* parallel_result, int dimension){
     for(int i = 0; i < dimension; i++){
+    
         if(serial_result[i] != parallel_result[i]){
-            printf("Mismatch at index %d: serial=%lld, parallel=%lld\n", 
-                   i, serial_result[i], parallel_result[i]);
+    
+            printf("Mismatch at index %d: serial=%lld, parallel=%lld\n", i, serial_result[i], parallel_result[i]);
             return false;
         }
     }
