@@ -33,20 +33,23 @@ int main(int argc, char *argv[]){
 
     int degree = atoi(argv[1]);
 
-    int* poly1 = (int*)malloc((degree + 1) * sizeof(int));
-    if(poly1 == NULL){
-        fprintf(stderr, "Memory allocation failed\n");
-        MPI_Abort(MPI_COMM_WORLD, 1);
-        return 1;
-    }
-    int* poly2 = (int*)malloc((degree + 1) * sizeof(int));
-    if(poly2 == NULL){
-        fprintf(stderr, "Memory allocation failed\n");
-        MPI_Abort(MPI_COMM_WORLD, 1);
-        return 1;
-    }
-    
-    if (my_rank == 0){
+    int* poly1 = NULL;
+    int* poly2 = NULL;
+
+    if (my_rank == 0) {
+        poly1 = (int*)malloc((degree + 1) * sizeof(int));
+        if(poly1 == NULL){
+            fprintf(stderr, "Memory allocation failed\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return 1;
+        }
+        poly2 = (int*)malloc((degree + 1) * sizeof(int));
+        if(poly2 == NULL){
+            fprintf(stderr, "Memory allocation failed\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return 1;
+        }
+
         // Initialize polynomials with random coefficients
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -72,6 +75,21 @@ int main(int argc, char *argv[]){
     int my_coeffs = coeffs_per_process + (my_rank < rem ? 1 : 0);
     // if we are in a process that takes extra coefficient, we need to adjust the start index
     int start_coeff = my_rank * coeffs_per_process + (my_rank < rem ? my_rank : rem);
+    int end_coeff = start_coeff + my_coeffs - 1;
+
+    // each rank only needs a part of coefficients from both polynomials.
+    // for every coefficient k in [start_coeff, end_coeff] that a process takes, indices that must be sent are:
+    // i in [max(0, k-degree), min(degree, k)] and (k-i) in the same range. (remember x^7 can be made by x^3 * x^4 and x^4 * x^3)
+    int part_start = (start_coeff - degree) > 0 ? (start_coeff - degree) : 0;
+    int part_end = (end_coeff < degree) ? end_coeff : degree;
+    int part_len = part_end - part_start + 1;
+
+    int* poly1_local = (int*)malloc((size_t)part_len * sizeof(int));
+    int* poly2_local = (int*)malloc((size_t)part_len * sizeof(int));
+    if (poly1_local == NULL || poly2_local == NULL) {
+        fprintf(stderr, "Rank %d: Memory allocation failed for local polynomial parts\n", my_rank);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
 
 
     __int128_t *local_res = (__int128_t*)calloc((size_t)my_coeffs, sizeof(__int128_t));
@@ -97,10 +115,35 @@ int main(int argc, char *argv[]){
     MPI_Barrier(MPI_COMM_WORLD);
     double total_start = MPI_Wtime();
     double send_start = MPI_Wtime();
-    // we do not have to consider synchronous and asynchronous sends because broadcast sends and receives the data 
-   //TODO : do we need to send all the data????
-    MPI_Bcast(poly1, degree + 1, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(poly2, degree + 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    // root sends only the needed parts to each rank.
+    if (my_rank == 0){
+        // root's own part
+        for (int i = 0; i < part_len; i++){
+            poly1_local[i] = poly1[part_start + i];
+            poly2_local[i] = poly2[part_start + i];
+        }
+
+        // Send parts to other ranks (parts may overlap, so use point-to-point)
+        for (int r = 1; r < nprocs; r++){
+            int r_coeffs = coeffs_per_process + (r < rem ? 1 : 0);
+            int r_start_coeff = r * coeffs_per_process + (r < rem ? r : rem);
+            int r_end_coeff = r_start_coeff + r_coeffs - 1;
+
+            int r_part_start = (r_start_coeff - degree) > 0 ? (r_start_coeff - degree) : 0;
+            int r_part_end = (r_end_coeff < degree) ? r_end_coeff : degree;
+            int r_part_len = r_part_end - r_part_start + 1;
+
+            // send with tags 100 and 101 to distinguish between the two polynomials
+            MPI_Send(poly1 + r_part_start, r_part_len, MPI_INT, r, 100, MPI_COMM_WORLD);
+            MPI_Send(poly2 + r_part_start, r_part_len, MPI_INT, r, 101, MPI_COMM_WORLD);
+        }
+    }
+    else{
+        MPI_Recv(poly1_local, part_len, MPI_INT, 0, 100, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(poly2_local, part_len, MPI_INT, 0, 101, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
+
     double send_end = MPI_Wtime();
     double send_time_local = send_end - send_start;
 
@@ -116,7 +159,7 @@ int main(int argc, char *argv[]){
         int i_end = (global_k < degree) ? global_k : degree;
         
         for (int i = i_start; i <= i_end; i++){
-            sum += (__int128_t)poly1[i] * poly2[global_k - i];
+            sum += (__int128_t)poly1_local[i - part_start] * poly2_local[(global_k - i) - part_start];
         }
 
         local_res[k] = sum;
@@ -206,10 +249,12 @@ int main(int argc, char *argv[]){
         free(displs);
         free(parallel_result);
         free(serial_result);
+        free(poly1);
+        free(poly2);
     }
     free(local_res);
-    free(poly1);
-    free(poly2);
+    free(poly1_local);
+    free(poly2_local);
     MPI_Finalize();
     return 0;
 }
