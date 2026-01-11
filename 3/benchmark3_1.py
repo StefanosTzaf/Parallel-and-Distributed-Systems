@@ -20,15 +20,15 @@ OUT_DIR = ROOT / "bench_results"
 OUT_DIR.mkdir(exist_ok=True)
 
 # Degrees to test
-DEGREES = [1_0000, 100_000]
+DEGREES = [10_000, 100_000, 500_000]
 
-# MPI ranks to test (tweak as needed)
-# Tip: multiples of 4 fill your nodes nicely if you have 4 slots/node.
-PROCS = [1, 2, 4, 8, 16, 32, 64, 80, 116]
+# skip serial computation
+SKIP_SERIAL = {500_000}
 
-NUM_RUNS = 1  # averaging runs per (n, p)
+PROCS = [1, 4, 16, 32, 64, 80, 116]
 
-# Expected lines from 3_1.c
+NUM_RUNS = 4
+
 PATTERNS = {
     "serial_time": re.compile(r"^Serial Computation Time: ([0-9.eE+-]+) seconds"),
     "send": re.compile(r"^Max Send Time: ([0-9.eE+-]+) seconds"),
@@ -58,7 +58,6 @@ class RunResult:
 
 
 def build():
-    # Prefer make if available in folder 3
     result = subprocess.run(["make"], cwd=ROOT, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Build failed\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
@@ -71,6 +70,10 @@ def run_once(degree: int, procs: int) -> RunResult:
     if MACHINEFILE.exists():
         cmd += ["-f", str(MACHINEFILE)]
     cmd += ["-n", str(procs), str(BIN), str(degree)]
+    
+    # Skip serial for large degrees
+    if degree in SKIP_SERIAL:
+        cmd.append("No")
 
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0:
@@ -85,7 +88,11 @@ def run_once(degree: int, procs: int) -> RunResult:
             if m:
                 parsed[key] = float(m.group(1))
 
-    missing = [k for k in PATTERNS.keys() if k not in parsed]
+    if "serial_time" not in parsed:
+        parsed["serial_time"] = 0.0
+    
+    required = set(PATTERNS.keys()) - {"serial_time"}
+    missing = [k for k in required if k not in parsed]
     if missing:
         raise ValueError(
             f"Failed to parse fields: {missing} for degree={degree}, procs={procs}\n"
@@ -104,7 +111,16 @@ def run_once(degree: int, procs: int) -> RunResult:
 
 
 def run_case_avg(degree: int, procs: int) -> RunResult:
-    runs = [run_once(degree, procs) for _ in range(NUM_RUNS)]
+    # Warm-up run (not counted). Errors should propagate.
+    print(f"  Warm-up run...")
+    _ = run_once(degree, procs)
+
+    # Measured runs
+    runs = []
+    for i in range(NUM_RUNS):
+        print(f"  Run {i+1}/{NUM_RUNS}...")
+        runs.append(run_once(degree, procs))
+    
     return RunResult(
         degree=degree,
         procs=procs,
@@ -147,7 +163,8 @@ def write_csv(path: Path, results: list[RunResult]):
             )
 
 
-def plot_times(results: list[RunResult], degree: int):
+def plot_parallel_times(results: list[RunResult], degree: int):
+    """Plot send, compute, gather times (parallelism-related) for a given degree."""
     rs = [r for r in results if r.degree == degree]
     rs.sort(key=lambda x: x.procs)
 
@@ -155,21 +172,40 @@ def plot_times(results: list[RunResult], degree: int):
     send = [r.send for r in rs]
     par = [r.parallel for r in rs]
     gath = [r.gather for r in rs]
-    tot = [r.total for r in rs]
-    serial = [r.serial_time for r in rs]
 
     plt.figure()
     plt.plot(p, send, marker="o", label="Max send")
     plt.plot(p, par, marker="o", label="Max compute")
     plt.plot(p, gath, marker="o", label="Max gather")
-    plt.plot(p, tot, marker="o", label="Max total")
-    plt.plot(p, serial, marker="o", label="Serial (verification)")
     plt.xlabel("MPI processes")
     plt.ylabel("Time (s)")
-    plt.title(f"MPI polynomial multiplication timing (n={degree})")
+    plt.title(f"Parallel operation times (n={degree})")
     plt.grid(True)
     plt.legend()
-    out = OUT_DIR / f"times_n{degree}.png"
+    out = OUT_DIR / f"parallel_times_n{degree}.png"
+    plt.savefig(out, bbox_inches="tight")
+    plt.close()
+
+
+def plot_total_vs_serial(results: list[RunResult], degree: int):
+    """Plot total parallel time vs serial time for a given degree."""
+    rs = [r for r in results if r.degree == degree]
+    rs.sort(key=lambda x: x.procs)
+
+    p = [r.procs for r in rs]
+    tot = [r.total for r in rs]
+    serial = [r.serial_time for r in rs]
+
+    plt.figure()
+    plt.plot(p, tot, marker="o", label="Max total (parallel)")
+    if serial[0] > 0:  # Only plot if serial was run
+        plt.plot(p, serial, marker="s", label="Serial")
+    plt.xlabel("MPI processes")
+    plt.ylabel("Time (s)")
+    plt.title(f"Total parallel vs serial time (n={degree})")
+    plt.grid(True)
+    plt.legend()
+    out = OUT_DIR / f"total_vs_serial_n{degree}.png"
     plt.savefig(out, bbox_inches="tight")
     plt.close()
 
@@ -180,7 +216,6 @@ def plot_speedup(results: list[RunResult], degree: int):
 
     p = [r.procs for r in rs]
     s = [r.speedup for r in rs]
-    e = [r.efficiency for r in rs]
 
     plt.figure()
     plt.plot(p, s, marker="o", label="Speedup (serial/total)")
@@ -193,6 +228,14 @@ def plot_speedup(results: list[RunResult], degree: int):
     out = OUT_DIR / f"speedup_n{degree}.png"
     plt.savefig(out, bbox_inches="tight")
     plt.close()
+
+
+def plot_efficiency(results: list[RunResult], degree: int):
+    rs = [r for r in results if r.degree == degree]
+    rs.sort(key=lambda x: x.procs)
+
+    p = [r.procs for r in rs]
+    e = [r.efficiency for r in rs]
 
     plt.figure()
     plt.plot(p, e, marker="o", label="Efficiency")
@@ -212,7 +255,13 @@ def main():
 
     results: list[RunResult] = []
     for n in DEGREES:
-        for p in PROCS:
+        # For 500k, use only large process counts
+        if n == 500_000:
+            procs_list = [32, 64, 80, 116]
+        else:
+            procs_list = PROCS
+        
+        for p in procs_list:
             # Skip impossible cases (more procs than coefficients gives tiny work and can be noisy)
             if p > (2 * n + 1):
                 continue
@@ -223,9 +272,18 @@ def main():
     write_csv(csv_path, results)
     print(f"Wrote {csv_path}")
 
+    # Plot 1: Parallel operation times (send, compute, gather) for each degree
     for n in DEGREES:
-        plot_times(results, n)
+        plot_parallel_times(results, n)
+
+    # Plot 2: Total vs serial comparison (only for 10^5 and 10^6)
+    for n in [100_000, 10_000]:
+        plot_total_vs_serial(results, n)
+
+    # Additional plots: speedup & efficiency for 10^4 and 10^5
+    for n in [10_000, 100_000]:
         plot_speedup(results, n)
+        plot_efficiency(results, n)
 
     print(f"Done. Check {OUT_DIR}/ for CSV and PNGs.")
 

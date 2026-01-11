@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <mpi.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <stdbool.h>
 
@@ -22,13 +23,23 @@ int main(int argc, char *argv[]){
     int my_rank, nprocs;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-
-    if (argc != 2){
-        if(my_rank == 0){
-            printf("Usage: %s <Degree of the Polynomials>\n", argv[0]);
+    
+    bool run_serial = true;
+    if (my_rank == 0){
+        if (argc != 2 && argc != 3){
+            fprintf(stderr, "Usage: %s <degree_of_polynomials>\n", argv[0]);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return 1;
         }
-        MPI_Finalize();
-        return 1;
+        if(argc == 3 && (strcmp(argv[2], "No") == 0 || strcmp(argv[2], "no") == 0 || strcmp(argv[2], "NO") == 0)){
+            run_serial = false;
+            fprintf(stderr, "Serial algorithm will not be run for verification.\n");
+        }
+        else if(argc == 3){
+            fprintf(stderr, "Invalid second argument. Use 'No' to skip serial algorithm.\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return 1;
+        }
     }
 
     int degree = atoi(argv[1]);
@@ -79,7 +90,7 @@ int main(int argc, char *argv[]){
 
     // each rank only needs a part of coefficients from both polynomials.
     // for every coefficient k in [start_coeff, end_coeff] that a process takes, indices that must be sent are:
-    // i in [max(0, k-degree), min(degree, k)] and (k-i) in the same range. (remember x^7 can be made by x^3 * x^4 and x^4 * x^3)
+    // i in [max(0, k - degree), min(degree, k)] and (k-i) in the same range. (remember x^7 can be made by x^3 * x^4 and x^4 * x^3)
     int part_start = (start_coeff - degree) > 0 ? (start_coeff - degree) : 0;
     int part_end = (end_coeff < degree) ? end_coeff : degree;
     int part_len = part_end - part_start + 1;
@@ -124,7 +135,7 @@ int main(int argc, char *argv[]){
             poly2_local[i] = poly2[part_start + i];
         }
 
-        // Send parts to other ranks (parts may overlap, so use point-to-point)
+        // send parts to other processes
         for (int r = 1; r < nprocs; r++){
             int r_coeffs = coeffs_per_process + (r < rem ? 1 : 0);
             int r_start_coeff = r * coeffs_per_process + (r < rem ? r : rem);
@@ -215,34 +226,44 @@ int main(int argc, char *argv[]){
     if (my_rank == 0){
         // Serial Polynomial Multiplication for verification
         double serial_start = MPI_Wtime();
-
-        for(int k = 0; k < result_size; k++) {
-            __int128_t sum = 0;
-            
-            int i_start = (k - degree) > 0 ? (k - degree) : 0;
-            int i_end = (k < degree) ? k : degree;
-            
-            for (int i = i_start; i <= i_end; i++) {
-                sum += (__int128_t)poly1[i] * poly2[k - i];
+        if(run_serial == true){
+            for(int k = 0; k < result_size; k++) {
+                __int128_t sum = 0;
+                
+                int i_start = (k - degree) > 0 ? (k - degree) : 0;
+                int i_end = (k < degree) ? k : degree;
+                
+                for (int i = i_start; i <= i_end; i++) {
+                    sum += (__int128_t)poly1[i] * poly2[k - i];
+                }
+                serial_result[k] = sum;
             }
-            serial_result[k] = sum;
         }
-
         double serial_end = MPI_Wtime();
         double serial_time = serial_end - serial_start;
 
-        if (verify_results(serial_result, parallel_result, result_size)){
-            printf("Results match!\n");
-        } 
-        else{
-            printf("Results do not match!\n");
+        if (run_serial == true){
+            if (verify_results(serial_result, parallel_result, result_size)){
+                printf("Results match!\n");
+            } 
+            else{
+                printf("Results do not match!\n");
+            }
         }
 
         // Print timings
-        printf("Serial Computation Time: %f seconds\n\n", serial_time);
+        if(run_serial == true){
+            printf("Serial Computation Time: %f seconds\n\n", serial_time);
+            // Derived metrics
+            double speedup = serial_time > 0.0 ? (serial_time / max_total_time) : 0.0;
+            double efficiency = speedup / (double)nprocs;
+            printf("Speedup: %f\n", speedup);
+            printf("Efficiency: %f\n\n", efficiency);
+        }
+            
         printf("Max Send Time: %f seconds\n", max_send_time);
-        printf("Max Parallel Computation Time: %f seconds\n", max_parallel_time);
-        printf("Max Gather Time: %f seconds\n", max_gather_time);
+        printf("Max Gather Time: %f seconds\n\n", max_gather_time);
+        printf("Max Parallel Computation Time: %f seconds\n\n", max_parallel_time);
         printf("Max Total Time: %f seconds\n", max_total_time);
 
         free(recv_counts);
