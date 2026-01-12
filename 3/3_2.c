@@ -65,7 +65,7 @@ int main(int argc, char* argv[]){
     // we have to copy the initial vector to restore it later for dense multiplication
     long long* current_vec = (long long*)malloc(dimension * sizeof(long long));   
     if((vector == NULL) || (current_vec == NULL) || (row_indeces_serial == NULL)){
-        printf("Memory allocation failed\n");
+        printf("Memory allocation failed 1\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
@@ -78,7 +78,7 @@ int main(int argc, char* argv[]){
         // MATRIX NxN ALLOCATION: allocate contiguously for MPI_Scatterv
         matrix = (int*)malloc(dimension * dimension * sizeof(int));
         if(matrix == NULL){
-            printf("Memory allocation failed\n");
+            printf("Memory allocation failed 2\n");
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
      
@@ -124,7 +124,7 @@ int main(int argc, char* argv[]){
         non_zero_values_serial = (int*)malloc(totalCount * sizeof(int)); // CSR array of non zero values
         column_indeces_serial = (int*)malloc(totalCount * sizeof(int)); // CSR array of column indeces of nzv
         if(non_zero_values_serial == NULL || column_indeces_serial == NULL){
-            printf("Memory allocation failed\n");
+            printf("Memory allocation failed 3\n");
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
@@ -158,7 +158,7 @@ int main(int argc, char* argv[]){
 
         result = (long long*)malloc(dimension * sizeof(long long));
         if(result == NULL){
-            printf("Memory allocation failed\n");
+            printf("Memory allocation failed 4\n");
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
@@ -196,8 +196,6 @@ int main(int argc, char* argv[]){
             local_rows += 1;
         }
     }
-    
-    size_t local_elements = local_rows * dimension; // number of elements of each process for dense multiplication
 
     // compute the start and end row for each process (global row indices)
     size_t row_start = 0;
@@ -218,7 +216,7 @@ int main(int argc, char* argv[]){
     // how many non zero values each process needs
     size_t local_non_zero_values_count = non_zero_values_end - non_zero_values_start;
 
-    // allocate memory for the local values and columns
+    // allocate memory for the local values
     int* local_values = malloc(sizeof(int) * local_non_zero_values_count);
     int* local_columns = malloc(sizeof(int) * local_non_zero_values_count);
 
@@ -226,7 +224,7 @@ int main(int argc, char* argv[]){
     // it is allocated as 1D meaning the rows are stored one after the other [row0 row1 ... local_rows-1]
     int* local_matrix = malloc(local_rows * dimension * sizeof(int));
     if((local_values == NULL) || (local_columns == NULL) || (local_matrix == NULL)){
-        printf("Memory allocation failed\n");
+        printf("Memory allocation failed 5\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
     
@@ -243,19 +241,16 @@ int main(int argc, char* argv[]){
     // so it can scatter properly the array with the non zero values
    if(my_rank == 0){
       
-        int* row_starts_array = malloc(sizeof(int) * nprocs); // holds the start row each process should read from
-        int* row_ends_array = malloc(sizeof(int) * nprocs); // holds the end row till which each process should read 
         local_rows_counts = malloc(sizeof(int) * nprocs); // holds the number of rows each process should read
         local_nzv_counts_array = malloc(sizeof(int) * nprocs); // holds the number of non zero values each process should read
         row_offsets = malloc(sizeof(int) * nprocs); //offsets for scattering the non zero values and column indeces
         local_elements_counts_array = malloc(sizeof(int) * nprocs); // for dense offsets
         local_element_offsets = malloc(sizeof(int) * nprocs);
         
-        if((row_starts_array == NULL) || (row_ends_array == NULL) || 
-            (local_rows_counts == NULL) || (local_nzv_counts_array == NULL) || (row_offsets == NULL) ||
+        if((local_rows_counts == NULL) || (local_nzv_counts_array == NULL) || (row_offsets == NULL) ||
             (local_elements_counts_array == NULL) || (local_element_offsets == NULL)){
            
-            printf("Memory allocation failed\n");
+            printf("Memory allocation failed 6\n");
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
         
@@ -276,14 +271,14 @@ int main(int argc, char* argv[]){
                 }
             }
             local_rows_counts[rank] = rows;
-            row_starts_array[rank] = row_start;
-            row_start += local_rows_counts[rank];
-            row_ends_array[rank] = row_start;
+            int row_end = row_start + local_rows_counts[rank];
             
             //number of non zero values for each process
-            local_nzv_counts_array[rank] = row_indeces_serial[row_ends_array[rank]] - row_indeces_serial[row_starts_array [rank]];
+            local_nzv_counts_array[rank] = row_indeces_serial[row_end] - row_indeces_serial[row_start];
             
-            // from which non-zero value the process should start reading
+            row_start += local_rows_counts[rank]; // row start for next rank
+
+            // number of nzv till the one the process should start reading from
             if(rank != 0){
                 row_offsets[rank] = row_offsets[rank-1] + local_nzv_counts_array[rank-1];
             }
@@ -294,9 +289,6 @@ int main(int argc, char* argv[]){
             // from which element each process should start reading
             local_element_offsets[rank] = local_element_offsets[rank-1] + local_elements_counts_array[rank-1];
         }
-
-        free(row_starts_array);
-        free(row_ends_array);
     }
 
     //##### DISTRIBUTION OF DATA TO ALL PROCESSES #####//
@@ -324,7 +316,7 @@ int main(int argc, char* argv[]){
     // Note: sendbuf only matters at root, but we need valid pointers
     
     MPI_Scatterv(matrix, local_elements_counts_array, local_element_offsets, MPI_INT, 
-        local_matrix, local_elements, MPI_INT, 0, MPI_COMM_WORLD);
+        local_matrix, local_rows * dimension, MPI_INT, 0, MPI_COMM_WORLD);
     
     send_end = MPI_Wtime();
     send_time += (send_end - send_start);
@@ -360,7 +352,7 @@ int main(int argc, char* argv[]){
     // for Allgather result (full vector on each rank)
     long long* csr_parallel_result = malloc(sizeof(long long) * dimension);
     if((local_result == NULL) || (csr_parallel_result == NULL)){
-        printf("Memory allocation failed\n");
+        printf("Memory allocation failed 7\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
@@ -404,7 +396,7 @@ int main(int argc, char* argv[]){
         csr_parallel_result = temp;
     }
 
-    // After iterations swaps: result is always in current_vec after the swap
+  
     // If even iterations: current_vec points to original_current_vec buffer
     // If odd iterations: current_vec points to original_csr_parallel_result buffer
     // We want result in original_csr_parallel_result for verification
@@ -428,10 +420,9 @@ int main(int argc, char* argv[]){
     
     
     //##### PREPARATION OF LOCAL DATA FOR DENSE EXECUTION #####//
-    long long* local_result_dense = malloc(sizeof(long long) * local_rows);
     long long* csr_dense_result = malloc(sizeof(long long) * dimension);
-    if((local_result_dense == NULL) || (csr_dense_result == NULL)){
-        printf("Memory allocation failed\n");
+    if((csr_dense_result == NULL)){
+        printf("Memory allocation failed 8\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
         return 1;
     }
@@ -455,11 +446,11 @@ int main(int argc, char* argv[]){
                 sum += (long long)local_matrix[(row - row_start) * dimension + col] * current_vec[col];
             }
             
-            local_result_dense[row - row_start] = sum;   //local result index
+            local_result[row - row_start] = sum;   //local result index
         }
         
         // Gather all partial results into csr_dense_result
-        MPI_Allgatherv(local_result_dense, local_rows, MPI_LONG_LONG, csr_dense_result, 
+        MPI_Allgatherv(local_result, local_rows, MPI_LONG_LONG, csr_dense_result, 
             recv_counts, displs, MPI_LONG_LONG, MPI_COMM_WORLD);
             
         // Swap pointers for next iteration
@@ -515,14 +506,8 @@ int main(int argc, char* argv[]){
         printf("Total Parallel Time: %f seconds\n", max_send_time + max_parallel_time + init_time);
         printf("Max dense multiplication time: %f seconds\n", max_dense_time);
         printf("=========================================\n");
-    }
-
-
-
-    //##### DEALLOCATION OF MEMORY #####//
-
-    
-    if (my_rank == 0) {
+       
+        //##### DEALLOCATION OF MEMORY #####//
         free(local_nzv_counts_array);
         free(row_offsets);
         free(local_elements_counts_array);
@@ -545,7 +530,6 @@ int main(int argc, char* argv[]){
     free(csr_parallel_result);
     free(csr_dense_result);
     free(local_result);
-    free(local_result_dense);
     free(local_values);
     free(local_columns);
     free(recv_counts);
