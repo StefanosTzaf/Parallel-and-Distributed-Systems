@@ -22,12 +22,12 @@ OUT_DIR.mkdir(exist_ok=True)
 
 NONUNIFORM_SPARSITIES = [10, 30, 50, 70, 90]
 NONUNIFORM_DIM = 10000
-NONUNIFORM_ITERATIONS = 20
+NONUNIFORM_ITERATIONS = 10
 NONUNIFORM_PROCESSES = 4
 NONUNIFORM_DIST_FLAG = "y"
 
 # Sweeps
-PROCESSES = [1, 32, 64, 116]
+PROCESSES = [1, 8, 16, 40]
 DIMS_PROCESSES = [1000, 10000]
 SPARSITIES = [5, 20, 50, 90]
 ITERATIONS_SWEEP = [1, 10, 20]
@@ -35,7 +35,7 @@ ITERATIONS_SWEEP = [1, 10, 20]
 # Defaults for sweeps
 DEFAULT_SPARSITY = 70
 DEFAULT_ITERATIONS = 10
-DEFAULT_PROCESSES = 32
+DEFAULT_PROCESSES = 16
 DEFAULT_DIM = 10000
 
 time_pattern = re.compile(r"(Serial initialization time|Serial multiplication time|Max time to send data|Max parallel multiplication time|Max dense multiplication time): ([0-9.eE+-]+)")
@@ -338,7 +338,7 @@ def main():
     sweep_processes()
     sweep_sparsity()
     sweep_iterations()
-    sweep_nonuniform_sparsity()
+    # sweep_nonuniform_sparsity()
     sweep_uniform_sparsity_high()
     print("Done! Check bench_results/ for CSV and PNG files.")
 

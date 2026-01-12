@@ -16,7 +16,7 @@ void non_uniform_distribution(int*, long long*, int, float, unsigned int*);
 void uniform_distribution(int*, long long*, int, float, unsigned int*);
 
 // executes matrix-vector multiplication in CSR format serially
-void serial_CSR_multiplication(int*, long long*, long long*, long long*, int, int, int*, int*, int*);
+void serial_CSR_multiplication(long long*, long long*, long long*, int, int, int*, int*, int*);
 
 
 int main(int argc, char* argv[]){
@@ -28,10 +28,9 @@ int main(int argc, char* argv[]){
 
     if(argc != 4 && argc != 5){
         if(my_rank == 0){
-            printf("Usage: %s <number of rows> <percentage of 0 elements> <iterations> [Y for non-uniform distribution]\n", argv[0]);
+            fprintf(stderr, "Usage: %s <number of rows> <percentage of 0 elements> <iterations> [Y for non-uniform distribution]\n", argv[0]);
         }
-        MPI_Finalize();
-        return -1;
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     int dimension = atoi(argv[1]);
@@ -41,8 +40,8 @@ int main(int argc, char* argv[]){
     if(my_rank == 0){
 
         if(zero_percentage < 0 || zero_percentage > 100){
-            printf("Percentage of 0 elements must be between 0 and 100.\n");
-            return 1;
+            fprintf(stderr, "Percentage of 0 elements must be between 0 and 100.\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
     }
 
@@ -52,10 +51,6 @@ int main(int argc, char* argv[]){
     // array because it will be used in broadcast
     // its initialization is executed only by process 0
     int* row_indeces_serial = (int*)malloc((dimension + 1) * sizeof(int));
-    if(row_indeces_serial == NULL){
-        printf("Memory allocation failed\n");
-        return 1;
-    }
 
     // only process 0 needs memory for these, but they still
     // should be NULL for the rest of the processes for
@@ -67,36 +62,29 @@ int main(int argc, char* argv[]){
 
     // VECTOR Nx1: all processes need memory for it for the multiplication
     long long* vector = (long long*)malloc(dimension * sizeof(long long));
-    if(vector == NULL){
-        printf("Memory allocation failed\n");
-        return 1;
-    }
-
     // we have to copy the initial vector to restore it later for dense multiplication
     long long* current_vec = (long long*)malloc(dimension * sizeof(long long));   
-    if((current_vec == NULL)){
+    if((vector == NULL) || (current_vec == NULL) || (row_indeces_serial == NULL)){
         printf("Memory allocation failed\n");
-        return 1;
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
-    // Timing variables for initialization and serial multiplication
-    // used also for broadcasting to all processes the execution time of process 0
+    // Timing variables 
     double init_time = 0.0;
     double serial_time_mult = 0.0;
 
+
     if(my_rank == 0){
         // MATRIX NxN ALLOCATION: allocate contiguously for MPI_Scatterv
-        matrix = (int*)malloc(dimension * dimension * sizeof(int*));
+        matrix = (int*)malloc(dimension * dimension * sizeof(int));
         if(matrix == NULL){
             printf("Memory allocation failed\n");
-            return 1;
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
      
-
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         unsigned int seed = ts.tv_nsec ^ ts.tv_sec;
-
 
         //##### INITIALIZATION OF MATRIX #####//
 
@@ -109,7 +97,7 @@ int main(int argc, char* argv[]){
             }
             else{
                 printf("Invalid argument for non-uniform distribution. Use 'Y' for yes. Else use no argument.\n");
-                return 1;
+                MPI_Abort(MPI_COMM_WORLD, 1);
             }
         }
         //Initialize matrix and vector with random values and zeros
@@ -120,77 +108,63 @@ int main(int argc, char* argv[]){
 
         //##### INITIALIZATION OF CSR MATRICES #####//
         double start_init = MPI_Wtime();
-        
-        // 1) count of non-zero elements in each row
-        int* row_nnz_serial = malloc(dimension * sizeof(int));
-        if(row_nnz_serial == NULL){
-            printf("Memory allocation failed\n");
-            return 1;
-        }
+                
+        // count total non zero values
+        size_t totalCount = 0;
+        for(int i = 0; i < dimension; i++){
 
-        for (int i = 0; i < dimension; i++) {
-            int count = 0;
-            for (int j = 0; j < dimension; j++) {
-                if (matrix[i * dimension + j] != 0){
-                    count++;
-                } 
+            for(int j = 0; j < dimension; j++){
+                
+                if (matrix[i * dimension + j] != 0) {
+                    totalCount++;
+                }
             }
-            row_nnz_serial[i] = count;
         }
-       
-        // 2) compute row_indeces
-        row_indeces_serial[0] = 0;
         
-        // equal to the number of non zero elements before the current row
-        for (int i = 0; i < dimension; i++) {
-            row_indeces_serial[i + 1] = row_indeces_serial[i] + row_nnz_serial[i];
-        }
-        free(row_nnz_serial);
-
-        // 3) 1st and 2nd CSR arrays
-        non_zero_values_serial = (int*)malloc(row_indeces_serial[dimension] * sizeof(int));
-        column_indeces_serial = (int*)malloc(row_indeces_serial[dimension] * sizeof(int));
+        non_zero_values_serial = (int*)malloc(totalCount * sizeof(int)); // CSR array of non zero values
+        column_indeces_serial = (int*)malloc(totalCount * sizeof(int)); // CSR array of column indeces of nzv
         if(non_zero_values_serial == NULL || column_indeces_serial == NULL){
             printf("Memory allocation failed\n");
-            return 1;
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
-     
+
+        row_indeces_serial[0] = 0;
         for (int i = 0; i < dimension; i++) {
-          
-            int idx = row_indeces_serial[i];
-          
-            for (int j = 0; j < dimension; j++) {
             
+            int count = 0;
+            int idx = row_indeces_serial[i];
+            
+            for (int j = 0; j < dimension; j++) {
+
                 if (matrix[i * dimension + j] != 0) {
-                    non_zero_values_serial[idx]  = matrix[i * dimension + j];
-                    column_indeces_serial[idx] = j;
+                    count++;
+                    non_zero_values_serial[idx]  = matrix[i * dimension + j]; // CSR ARRAY 1
+                    column_indeces_serial[idx] = j; // CSR ARRAY 2
                     idx++;
                 }
             }
+            row_indeces_serial[i + 1] = row_indeces_serial[i] + count; // CSR ARRAY 3
+            current_vec[i] = vector[i];
         }
 
         double end_init = MPI_Wtime();
         init_time = end_init - start_init;
         
-        for(int i = 0; i < dimension; i++){
-            current_vec[i] = vector[i];
-        }
         //##### END OF INITIALIZATION OF CSR MATRICES#####//
 
 
-      
         //##### MULTIPLICATION OF MATRIX WITH VECTOR #####//
         // ################### SERIAL ####################//
 
         result = (long long*)malloc(dimension * sizeof(long long));
         if(result == NULL){
             printf("Memory allocation failed\n");
-            return 1;
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
         double start_serial_mult = MPI_Wtime();
 
-        serial_CSR_multiplication(matrix, vector, current_vec, result, dimension, iterations, 
+        serial_CSR_multiplication(vector, current_vec, result, dimension, iterations, 
             row_indeces_serial, non_zero_values_serial, column_indeces_serial);
         
         double end_serial_mult = MPI_Wtime();
@@ -213,7 +187,6 @@ int main(int argc, char* argv[]){
 
     size_t rows_per_process = dimension / nprocs;
     size_t remaining = dimension % nprocs; // remaining rows to distribute
-
     size_t local_rows = rows_per_process; 
 
     // if they are remaining rows, give an 
@@ -254,7 +227,7 @@ int main(int argc, char* argv[]){
     int* local_matrix = malloc(local_rows * dimension * sizeof(int));
     if((local_values == NULL) || (local_columns == NULL) || (local_matrix == NULL)){
         printf("Memory allocation failed\n");
-        return 1;
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
     
     // only process 0 can pass these as arguments
@@ -274,14 +247,22 @@ int main(int argc, char* argv[]){
         int* row_ends_array = malloc(sizeof(int) * nprocs); // holds the end row till which each process should read 
         local_rows_counts = malloc(sizeof(int) * nprocs); // holds the number of rows each process should read
         local_nzv_counts_array = malloc(sizeof(int) * nprocs); // holds the number of non zero values each process should read
+        row_offsets = malloc(sizeof(int) * nprocs); //offsets for scattering the non zero values and column indeces
+        local_elements_counts_array = malloc(sizeof(int) * nprocs); // for dense offsets
+        local_element_offsets = malloc(sizeof(int) * nprocs);
         
         if((row_starts_array == NULL) || (row_ends_array == NULL) || 
-                (local_rows_counts == NULL) || (local_nzv_counts_array == NULL)){
+            (local_rows_counts == NULL) || (local_nzv_counts_array == NULL) || (row_offsets == NULL) ||
+            (local_elements_counts_array == NULL) || (local_element_offsets == NULL)){
+           
             printf("Memory allocation failed\n");
-            return 1;
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
-
-        // 1) calculate number of local rows for each process
+        
+        // calculation of number of local rows, local start, local end
+        size_t row_start = 0;
+        row_offsets[0] = 0;
+        local_element_offsets[0] = 0;
         for(int rank = 0; rank < nprocs; rank++){
         
             size_t rows = rows_per_process;
@@ -295,64 +276,27 @@ int main(int argc, char* argv[]){
                 }
             }
             local_rows_counts[rank] = rows;
-        }
-
-        // 2) calculate start and end row for each process
-        size_t row_start = 0;
-        for(int rank = 0; rank < nprocs; rank++){
-            
             row_starts_array[rank] = row_start;
-
             row_start += local_rows_counts[rank];
-
             row_ends_array[rank] = row_start;
-        }
-
-        // 3) number of non zero values for each process
-        for(int rank = 0; rank < nprocs; rank++){
+            
+            //number of non zero values for each process
             local_nzv_counts_array[rank] = row_indeces_serial[row_ends_array[rank]] - row_indeces_serial[row_starts_array [rank]];
-        }
-        
-        // 4) offsets for scattering the non zero values and column indeces
-        // basically: from which index each process should start reading
-        row_offsets = malloc(sizeof(int) * nprocs);
-        if(row_offsets == NULL){
-            printf("Memory allocation failed\n");
-            return 1;
-        }
-        row_offsets[0] = 0;
-        for(int rank = 1; rank < nprocs; rank++){
-            row_offsets[rank] = row_offsets[rank-1] + local_nzv_counts_array[rank-1];
-        }
-
-        //######## this data is needed for scattering the dense matrix later
-
-        // 1) number of elements each process should read
-        local_elements_counts_array = malloc(sizeof(int) * nprocs);
-        if(local_elements_counts_array == NULL){
-            printf("Memory allocation failed\n");
-            return 1;
-        }
-
-        for(int rank = 0; rank < nprocs; rank++){
+            
+            // from which non-zero value the process should start reading
+            if(rank != 0){
+                row_offsets[rank] = row_offsets[rank-1] + local_nzv_counts_array[rank-1];
+            }
+            
+            // number of elements each process should read: dense multiplication
             local_elements_counts_array[rank] = local_rows_counts[rank] * dimension;
-        }
-
-        // 2) offsets for elements: from which element each process should start reading
-        local_element_offsets = malloc(sizeof(int) * nprocs);
-        if(local_element_offsets == NULL){
-            printf("Memory allocation failed\n");
-            return 1;
-        }
-
-        local_element_offsets[0] = 0;
-        for(int rank = 1; rank < nprocs; rank++){
+            
+            // from which element each process should start reading
             local_element_offsets[rank] = local_element_offsets[rank-1] + local_elements_counts_array[rank-1];
         }
-        
+
         free(row_starts_array);
         free(row_ends_array);
-
     }
 
     //##### DISTRIBUTION OF DATA TO ALL PROCESSES #####//
@@ -383,7 +327,7 @@ int main(int argc, char* argv[]){
         local_matrix, local_elements, MPI_INT, 0, MPI_COMM_WORLD);
     
     send_end = MPI_Wtime();
-    send_time += send_end - send_start;
+    send_time += (send_end - send_start);
 
     //##### MULTIPLICATION OF MATRIX WITH VECTOR #####//
     //################### PARALLEL ##################//
@@ -395,6 +339,7 @@ int main(int argc, char* argv[]){
     int* displs = malloc(sizeof(int) * nprocs);
     if(recv_counts == NULL || displs == NULL){
         printf("Memory allocation failed\n");
+        MPI_Abort(MPI_COMM_WORLD, 1);
         return 1;
     }
     
@@ -412,20 +357,16 @@ int main(int argc, char* argv[]){
     
     // local result array for each process
     long long* local_result = malloc(sizeof(long long) * local_rows);
-    if(local_result == NULL){
-        printf("Memory allocation failed\n");
-        return 1;
-    }
-    
-    // parallel result array to gather all results
+    // for Allgather result (full vector on each rank)
     long long* csr_parallel_result = malloc(sizeof(long long) * dimension);
-    if(csr_parallel_result == NULL){
+    if((local_result == NULL) || (csr_parallel_result == NULL)){
         printf("Memory allocation failed\n");
-        return 1;
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
-    
+
+    // Base index in CSR arrays
     int local_base = row_indeces_serial[row_start];
-    
+
     MPI_Barrier(MPI_COMM_WORLD);
     double parallel_start_local = MPI_Wtime();
 
@@ -434,16 +375,15 @@ int main(int argc, char* argv[]){
     long long* original_csr_parallel_result = csr_parallel_result;
 
     for(int iter = 0; iter < iterations; iter++){
-        // Each process computes its portion of rows
+
+        // Compute local rows
         for(int row = row_start; row < row_end; row++){
 
             long long sum = 0;
 
-            // global begin and end refer to non_zero_values_serial
             int global_begin = row_indeces_serial[row];
             int global_end   = row_indeces_serial[row + 1];
 
-            // local begin and end refer to local_values
             int local_begin = global_begin - local_base;
             int local_end   = global_end   - local_base;
 
@@ -478,7 +418,7 @@ int main(int argc, char* argv[]){
     double parallel_time_local = parallel_end_local - parallel_start_local;
 
     // reset original_current_vec to original vector for dense multiplication
-    // and restore current_vec pointer
+    // and restore pointers for proper cleanup
     for(int i = 0; i < dimension; i++){
         original_current_vec[i] = vector[i];
     }
@@ -489,14 +429,10 @@ int main(int argc, char* argv[]){
     
     //##### PREPARATION OF LOCAL DATA FOR DENSE EXECUTION #####//
     long long* local_result_dense = malloc(sizeof(long long) * local_rows);
-    if(local_result_dense == NULL){
-        printf("Memory allocation failed\n");
-        return 1;
-    }
-    
     long long* csr_dense_result = malloc(sizeof(long long) * dimension);
-    if(csr_dense_result == NULL){
+    if((local_result_dense == NULL) || (csr_dense_result == NULL)){
         printf("Memory allocation failed\n");
+        MPI_Abort(MPI_COMM_WORLD, 1);
         return 1;
     }
 
@@ -548,8 +484,7 @@ int main(int argc, char* argv[]){
     current_vec = original_current_vec_dense;
     csr_dense_result = original_csr_dense_result;
     
-        
-
+    
     // Reduce to get max times across all processes
     double max_parallel_time, max_send_time, max_dense_time;
     MPI_Reduce(&parallel_time_local, &max_parallel_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
@@ -669,7 +604,7 @@ void uniform_distribution(int* matrix, long long* vector, int dimension, float z
     }
 }
 
-void serial_CSR_multiplication(int* matrix, long long* vector, long long* current_vec, long long* result, int dimension, int iterations, 
+void serial_CSR_multiplication(long long* vector, long long* current_vec, long long* result, int dimension, int iterations, 
     int* row_indeces_serial, int* non_zero_values_serial, int* column_indeces_serial){
 
     // Save original pointers
@@ -693,11 +628,8 @@ void serial_CSR_multiplication(int* matrix, long long* vector, long long* curren
         // just so as not to write to the same array
         result = temp;   
     }
-    
-    // After iterations swaps: result is always in current_vec after the swap
+
     // If odd iterations: current_vec points to original_result buffer (no copy needed)
-    // If even iterations: current_vec points to original_current_vec buffer (need copy)
-    // We want result in original_result (the buffer the caller passed)
     if(iterations % 2 == 0) {
         // current_vec has the final result, need to copy to original_result
         for(int i = 0; i < dimension; i++){
