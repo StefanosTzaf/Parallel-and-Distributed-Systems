@@ -9,6 +9,9 @@
 // Verify that serial and parallel results match
 bool verify_results(long long*, long long*, int);
 
+//Initialize matrix and vector with random values and zeros
+size_t uniform_distribution(int*, long long*, int, float, unsigned int*);
+
 // executes matrix-vector multiplication in CSR format serially
 void serial_CSR_multiplication(long long*, long long*, long long*, int, int, int*, int*, int*);
 
@@ -82,41 +85,13 @@ int main(int argc, char* argv[]){
 
         //##### INITIALIZATION OF MATRIX #####//
 
-        for(int i = 0; i < dimension; i++){
-            for(int j = 0; j < dimension; j++){
-                bool zero_element = ((rand_r(&seed) % 100) < zero_percentage);
-                if(zero_element){
-                    matrix[i * dimension + j] = 0;
-                } 
-                else {
-                    bool sign = rand_r(&seed) % 2;
-                    // generate random non-zero value
-                    int value = (rand_r(&seed) % RAND_MAX) + 1;
-                    matrix[i * dimension + j] = sign ? value : -value;
-                }
-            }
-            bool sign = rand_r(&seed) % 2;
-            int value = (rand_r(&seed) % RAND_MAX) + 1;
-            vector[i] = sign ? value : -value;
-        }
+        size_t countOfNonZero = uniform_distribution(matrix, vector, dimension, zero_percentage, &seed);
 
         //##### INITIALIZATION OF CSR MATRICES #####//
         double start_init = MPI_Wtime();
-                
-        // count total non zero values
-        size_t totalCount = 0;
-        for(int i = 0; i < dimension; i++){
-
-            for(int j = 0; j < dimension; j++){
-                
-                if (matrix[i * dimension + j] != 0) {
-                    totalCount++;
-                }
-            }
-        }
         
-        non_zero_values_serial = (int*)malloc(totalCount * sizeof(int)); // CSR array of non zero values
-        column_indeces_serial = (int*)malloc(totalCount * sizeof(int)); // CSR array of column indeces of nzv
+        non_zero_values_serial = (int*)malloc(countOfNonZero * sizeof(int)); // CSR array of non zero values
+        column_indeces_serial = (int*)malloc(countOfNonZero * sizeof(int)); // CSR array of column indeces of nzv
         if(non_zero_values_serial == NULL || column_indeces_serial == NULL){
             printf("Memory allocation failed 3\n");
             MPI_Abort(MPI_COMM_WORLD, 1);
@@ -533,6 +508,33 @@ int main(int argc, char* argv[]){
     return 0;
 }
 
+
+
+size_t uniform_distribution(int* matrix, long long* vector, int dimension, float zero_percentage, unsigned int* seed){
+    
+    size_t nzv = 0;
+    
+    for(int i = 0; i < dimension; i++){
+        for(int j = 0; j < dimension; j++){
+            bool zero_element = ((rand_r(seed) % 100) < zero_percentage);
+            if(zero_element){
+                matrix[i * dimension + j] = 0;
+            } 
+            else {
+                bool sign = rand_r(seed) % 2;
+                // generate random non-zero value
+                int value = (rand_r(seed) % RAND_MAX) + 1;
+                matrix[i * dimension + j] = sign ? value : -value;
+                nzv++;
+            }
+        }
+        bool sign = rand_r(seed) % 2;
+        int value = (rand_r(seed) % RAND_MAX) + 1;
+        vector[i] = sign ? value : -value;
+    }
+
+    return nzv;
+}
 
 void serial_CSR_multiplication(long long* vector, long long* current_vec, long long* result, int dimension, int iterations, 
     int* row_indeces_serial, int* non_zero_values_serial, int* column_indeces_serial){
