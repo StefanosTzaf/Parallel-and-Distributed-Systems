@@ -9,12 +9,6 @@
 // Verify that serial and parallel results match
 bool verify_results(long long*, long long*, int);
 
-// Pack zeros at the beginning of the matrix
-void non_uniform_distribution(int*, long long*, int, float, unsigned int*);
-
-//Initialize matrix and vector with random values and zeros
-void uniform_distribution(int*, long long*, int, float, unsigned int*);
-
 // executes matrix-vector multiplication in CSR format serially
 void serial_CSR_multiplication(long long*, long long*, long long*, int, int, int*, int*, int*);
 
@@ -26,9 +20,9 @@ int main(int argc, char* argv[]){
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
-    if(argc != 4 && argc != 5){
+    if(argc != 4){
         if(my_rank == 0){
-            fprintf(stderr, "Usage: %s <number of rows> <percentage of 0 elements> <iterations> [Y for non-uniform distribution]\n", argv[0]);
+            fprintf(stderr, "Usage: %s <number of rows> <percentage of 0 elements> <iterations> \n", argv[0]);
         }
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
@@ -88,23 +82,23 @@ int main(int argc, char* argv[]){
 
         //##### INITIALIZATION OF MATRIX #####//
 
-        // if non uniform distribution is selected pack all zeros at the beginning of the matrix
-        if(argc == 5){
-           
-            if(argv[4][0] == 'y' || argv[4][0] == 'Y'){
-
-                non_uniform_distribution(matrix, vector, dimension, zero_percentage, &seed);
+        for(int i = 0; i < dimension; i++){
+            for(int j = 0; j < dimension; j++){
+                bool zero_element = ((rand_r(&seed) % 100) < zero_percentage);
+                if(zero_element){
+                    matrix[i * dimension + j] = 0;
+                } 
+                else {
+                    bool sign = rand_r(&seed) % 2;
+                    // generate random non-zero value
+                    int value = (rand_r(&seed) % RAND_MAX) + 1;
+                    matrix[i * dimension + j] = sign ? value : -value;
+                }
             }
-            else{
-                printf("Invalid argument for non-uniform distribution. Use 'Y' for yes. Else use no argument.\n");
-                MPI_Abort(MPI_COMM_WORLD, 1);
-            }
+            bool sign = rand_r(&seed) % 2;
+            int value = (rand_r(&seed) % RAND_MAX) + 1;
+            vector[i] = sign ? value : -value;
         }
-        //Initialize matrix and vector with random values and zeros
-        else{
-            uniform_distribution(matrix, vector, dimension, zero_percentage, &seed);
-        }
-
 
         //##### INITIALIZATION OF CSR MATRICES #####//
         double start_init = MPI_Wtime();
@@ -539,54 +533,6 @@ int main(int argc, char* argv[]){
     return 0;
 }
 
-
-
-
-// Pack zeros at the beginning of the matrix
-void non_uniform_distribution(int* matrix, long long* vector, int dimension, float zero_percentage, unsigned int* seed){
-    int zero_elements = (int)((zero_percentage / 100.0) * dimension * dimension);
-    int count = 0;
-    
-    for(int i = 0; i < dimension; i++){
-        for(int j = 0; j < dimension; j++){
-            if(count < zero_elements){
-                matrix[i * dimension + j] = 0;
-                count++;
-            }
-            else{
-                bool sign = rand_r(seed) % 2;
-                int value = (rand_r(seed) % RAND_MAX) + 1;
-                matrix[i * dimension + j] = sign ? value : -value;
-            }
-        }
-        bool sign = rand_r(seed) % 2;
-        int value = (rand_r(seed) % RAND_MAX) + 1;
-        vector[i] = sign ? value : -value;
-    }
-
-}
-
-
-//Initialize matrix and vector with random values and zeros
-void uniform_distribution(int* matrix, long long* vector, int dimension, float zero_percentage, unsigned int* seed){
-    for(int i = 0; i < dimension; i++){
-        for(int j = 0; j < dimension; j++){
-            bool zero_element = ((rand_r(seed) % 100) < zero_percentage);
-            if(zero_element){
-                matrix[i * dimension + j] = 0;
-            } 
-            else {
-                bool sign = rand_r(seed) % 2;
-                // generate random non-zero value
-                int value = (rand_r(seed) % RAND_MAX) + 1;
-                matrix[i * dimension + j] = sign ? value : -value;
-            }
-        }
-        bool sign = rand_r(seed) % 2;
-        int value = (rand_r(seed) % RAND_MAX) + 1;
-        vector[i] = sign ? value : -value;
-    }
-}
 
 void serial_CSR_multiplication(long long* vector, long long* current_vec, long long* result, int dimension, int iterations, 
     int* row_indeces_serial, int* non_zero_values_serial, int* column_indeces_serial){

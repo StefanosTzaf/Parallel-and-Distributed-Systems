@@ -17,20 +17,15 @@ except ImportError:
 
 ROOT = Path(__file__).parent
 BIN = ROOT / "build" / "3_2"
+MACHINEFILE = ROOT / "machines"
 OUT_DIR = ROOT / "bench_results"
 OUT_DIR.mkdir(exist_ok=True)
 
-NONUNIFORM_SPARSITIES = [10, 30, 50, 70, 90]
-NONUNIFORM_DIM = 10000
-NONUNIFORM_ITERATIONS = 10
-NONUNIFORM_PROCESSES = 4
-NONUNIFORM_DIST_FLAG = "y"
-
 # Sweeps
-PROCESSES = [1, 8, 16, 40]
+PROCESSES = [1, 4, 8, 16, 32]
 DIMS_PROCESSES = [1000, 10000]
 SPARSITIES = [5, 20, 50, 90]
-ITERATIONS_SWEEP = [1, 10, 20]
+ITERATIONS_SWEEP = [1, 5, 10, 20]
 
 # Defaults for sweeps
 DEFAULT_SPARSITY = 70
@@ -44,7 +39,7 @@ NUM_RUNS = 4  # Number of times to run each benchmark for averaging
 WARMUP_RUNS = 1  # Number of warm-up runs before timing
 
 
-def run_case(dimension: int, sparsity: int, iterations: int, processes: int, uneven: bool = False):
+def run_case(dimension: int, sparsity: int, iterations: int, processes: int):
     """Run benchmark NUM_RUNS times (after warm-up) and return average timings."""
     all_times = {
         "Serial initialization time": [],
@@ -54,12 +49,12 @@ def run_case(dimension: int, sparsity: int, iterations: int, processes: int, une
         "Max dense multiplication time": [],
     }
     
-    cmd = ["mpiexec", "-n", str(processes), str(BIN), str(dimension), str(sparsity), str(iterations)]
-    if uneven:
-        cmd.append(NONUNIFORM_DIST_FLAG)
-    
-    dist = "non-uniform" if uneven else "uniform"
-    print(f"  Running: n={dimension}, sparsity={sparsity}%, iter={iterations}, procs={processes}, dist={dist}")
+    cmd = ["mpiexec"]
+    if MACHINEFILE.exists():
+        cmd += ["-f", str(MACHINEFILE)]
+    cmd += ["-n", str(processes), str(BIN), str(dimension), str(sparsity), str(iterations)]
+
+    print(f"  Running: n={dimension}, sparsity={sparsity}%, iter={iterations}, procs={processes}")
     
     # Warm-up runs (not timed)
     for w in range(WARMUP_RUNS):
@@ -114,17 +109,17 @@ def sweep_processes():
 def sweep_sparsity():
     print("\n=== SWEEP: sparsity ===")
     rows = []
-    for dim in [1000, 10000]:  # Test both dimensions
-        for sp in SPARSITIES:
-            times = run_case(dim, sp, DEFAULT_ITERATIONS, DEFAULT_PROCESSES)
-            rows.append({
-                "sweep": "sparsity",
-                "dimension": dim,
-                "sparsity": sp,
-                "iterations": DEFAULT_ITERATIONS,
-                "processes": DEFAULT_PROCESSES,
-                **times,
-            })
+    dim = 10000
+    for sp in SPARSITIES:
+        times = run_case(dim, sp, DEFAULT_ITERATIONS, DEFAULT_PROCESSES)
+        rows.append({
+            "sweep": "sparsity",
+            "dimension": dim,
+            "sparsity": sp,
+            "iterations": DEFAULT_ITERATIONS,
+            "processes": DEFAULT_PROCESSES,
+            **times,
+        })
     path = OUT_DIR / "sparsity.csv"
     write_csv(path, rows)
     if HAS_MATPLOTLIB:
@@ -134,17 +129,17 @@ def sweep_sparsity():
 def sweep_iterations():
     print("\n=== SWEEP: iterations ===")
     rows = []
-    for dim in [1000, 10000]:  # Test both dimensions
-        for it in ITERATIONS_SWEEP:
-            times = run_case(dim, DEFAULT_SPARSITY, it, DEFAULT_PROCESSES)
-            rows.append({
-                "sweep": "iterations",
-                "dimension": dim,
-                "sparsity": DEFAULT_SPARSITY,
-                "iterations": it,
-                "processes": DEFAULT_PROCESSES,
-                **times,
-            })
+    dim = 10000
+    for it in ITERATIONS_SWEEP:
+        times = run_case(dim, DEFAULT_SPARSITY, it, DEFAULT_PROCESSES)
+        rows.append({
+            "sweep": "iterations",
+            "dimension": dim,
+            "sparsity": DEFAULT_SPARSITY,
+            "iterations": it,
+            "processes": DEFAULT_PROCESSES,
+            **times,
+        })
     path = OUT_DIR / "iterations.csv"
     write_csv(path, rows)
     if HAS_MATPLOTLIB:
@@ -245,87 +240,6 @@ def plot_iterations(csv_path: Path):
         print(f"Saved {out}")
 
 
-def sweep_nonuniform_sparsity():
-    print("\n=== SWEEP: nonuniform_sparsity ===")
-    rows = []
-    for sp in NONUNIFORM_SPARSITIES:
-        times = run_case(NONUNIFORM_DIM, sp, NONUNIFORM_ITERATIONS, NONUNIFORM_PROCESSES, uneven=True)
-        rows.append({
-            "sweep": "nonuniform_sparsity",
-            "dimension": NONUNIFORM_DIM,
-            "sparsity": sp,
-            "iterations": NONUNIFORM_ITERATIONS,
-            "processes": NONUNIFORM_PROCESSES,
-            "distribution": "non-uniform",
-            **times,
-        })
-    path = OUT_DIR / f"nonuniform_sparsity.csv"
-    write_csv(path, rows)
-    if HAS_MATPLOTLIB:
-        plot_nonuniform_sparsity(path)
-
-
-
-def plot_nonuniform_sparsity(csv_path: Path):
-    df = read_csv_simple(csv_path)
-    plt.figure()
-    plt.plot(df["sparsity"], df["Max parallel multiplication time"], marker="o", label="CSR parallel")
-    plt.plot(df["sparsity"], df["Serial multiplication time"], marker="o", label="CSR serial")
-    plt.plot(df["sparsity"], df["Max dense multiplication time"], marker="o", label="Dense parallel")
-    plt.xlabel("Sparsity (% zeros)")
-    plt.ylabel("Time (s)")
-    plt.title(
-        f"Non-uniform zeros (MPI)\n"
-        f"n={NONUNIFORM_DIM}, iterations={NONUNIFORM_ITERATIONS}, processes={NONUNIFORM_PROCESSES}"
-    )
-    plt.legend()
-    plt.grid(True)
-    out = OUT_DIR / f"nonuniform_sparsity.png"
-    plt.savefig(out, bbox_inches="tight")
-    plt.close()
-    print(f"Saved {out}")
-
-
-def sweep_uniform_sparsity_high():
-    print("\n=== SWEEP: uniform_sparsity ===")
-    rows = []
-    for sp in NONUNIFORM_SPARSITIES:
-        times = run_case(NONUNIFORM_DIM, sp, NONUNIFORM_ITERATIONS, NONUNIFORM_PROCESSES, uneven=False)
-        rows.append({
-            "sweep": "uniform_sparsity_high",
-            "dimension": NONUNIFORM_DIM,
-            "sparsity": sp,
-            "iterations": NONUNIFORM_ITERATIONS,
-            "processes": NONUNIFORM_PROCESSES,
-            "distribution": "uniform",
-            **times,
-        })
-    path = OUT_DIR / f"uniform_sparsity.csv"
-    write_csv(path, rows)
-    if HAS_MATPLOTLIB:
-        plot_uniform_sparsity_high(path)
-
-
-def plot_uniform_sparsity_high(csv_path: Path):
-    df = read_csv_simple(csv_path)
-    plt.figure()
-    plt.plot(df["sparsity"], df["Max parallel multiplication time"], marker="o", label="CSR parallel")
-    plt.plot(df["sparsity"], df["Serial multiplication time"], marker="o", label="CSR serial")
-    plt.plot(df["sparsity"], df["Max dense multiplication time"], marker="o", label="Dense parallel")
-    plt.xlabel("Sparsity (% zeros)")
-    plt.ylabel("Time (s)")
-    plt.title(
-        f"Uniform zeros (MPI)\n"
-        f"n={NONUNIFORM_DIM}, iterations={NONUNIFORM_ITERATIONS}, processes={NONUNIFORM_PROCESSES}"
-    )
-    plt.legend()
-    plt.grid(True)
-    out = OUT_DIR / f"uniform_sparsity.png"
-    plt.savefig(out, bbox_inches="tight")
-    plt.close()
-    print(f"Saved {out}")
-
-
 def main():
     print("Building...")
     result = subprocess.run(["make"], cwd=ROOT, capture_output=True, text=True)
@@ -336,10 +250,8 @@ def main():
         raise FileNotFoundError(f"Binary not found at {BIN}. Build with: mpicc -o 3_2 3_2.c")
     print("Running benchmarks...")
     sweep_processes()
-    sweep_sparsity()
-    sweep_iterations()
-    # sweep_nonuniform_sparsity()
-    sweep_uniform_sparsity_high()
+    # sweep_sparsity()
+    # sweep_iterations()
     print("Done! Check bench_results/ for CSV and PNG files.")
 
 
