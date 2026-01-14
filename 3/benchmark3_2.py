@@ -250,9 +250,42 @@ def main():
         raise FileNotFoundError(f"Binary not found at {BIN}. Build with: mpicc -o 3_2 3_2.c")
     print("Running benchmarks...")
     sweep_processes()
-    # sweep_sparsity()
-    # sweep_iterations()
+    sweep_sparsity()
+    sweep_iterations()
+    # Custom plot for 10 iterations, 10000 size
+    if HAS_MATPLOTLIB:
+        plot_parallel_times_comparison()
     print("Done! Check bench_results/ for CSV and PNG files.")
+def plot_parallel_times_comparison():
+    """Plot max send time, max parallel multiplication time, and total parallel time for 10 iterations and 10000 size."""
+    import matplotlib.pyplot as plt
+    csv_path = OUT_DIR / "processes.csv"
+    if not csv_path.exists():
+        print(f"{csv_path} not found. Run sweep_processes() first.")
+        return
+    df = read_csv_simple(csv_path)
+    # Filter for dimension=10000 and iterations=10
+    indices = [i for i, (dim, it) in enumerate(zip(df["dimension"], df["iterations"])) if dim == 10000 and it == 10]
+    if not indices:
+        print("No data for dimension=10000 and iterations=10 in processes.csv")
+        return
+    procs = [df["processes"][i] for i in indices]
+    max_send = [df["Max time to send data"][i] for i in indices]
+    max_parallel = [df["Max parallel multiplication time"][i] for i in indices]
+    total_parallel = [max_send[j] + max_parallel[j] + df["Serial initialization time"][indices[j]] for j in range(len(indices))]
+    plt.figure()
+    plt.plot(procs, max_send, marker="o", label="Max send time")
+    plt.plot(procs, max_parallel, marker="o", label="Max parallel multiplication time")
+    plt.plot(procs, total_parallel, marker="o", label="Total parallel time")
+    plt.xlabel("Processes")
+    plt.ylabel("Time (s)")
+    plt.title("Parallel Time Breakdown (n=10000, iter=10)")
+    plt.legend()
+    plt.grid(True)
+    out = OUT_DIR / "parallel_time_breakdown_n10000_iter10.png"
+    plt.savefig(out, bbox_inches="tight")
+    plt.close()
+    print(f"Saved {out}")
 
 
 if __name__ == "__main__":
