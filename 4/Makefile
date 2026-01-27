@@ -1,22 +1,20 @@
 CC = gcc
-CFLAGS = -Wall -g -O2 -mavx2
+CFLAGS = -Wall -g -mavx2
 BUILD_DIR = build
 
 OBJ1 = $(BUILD_DIR)/4_1.o 
 
 
-TARGET1 = $(BUILD_DIR)/4_1
+TARGET = $(BUILD_DIR)/4_1
 
-
-all: $(BUILD_DIR) $(TARGET1)
+all: $(BUILD_DIR) $(TARGET)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(TARGET1): $(OBJ1)
-	$(CC) $(CFLAGS) -o $(TARGET1) $(OBJ1)
-
-$(BUILD_DIR)/%.o: %.c
+$(TARGET): $(OBJ1)
+	$(CC) $(CFLAGS) -o $(TARGET) $(OBJ1)
+$(BUILD_DIR)/4_1.o: 4_1.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
