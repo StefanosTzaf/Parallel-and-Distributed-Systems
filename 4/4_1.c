@@ -23,7 +23,6 @@ double get_time_sec(struct timespec start, struct timespec end) {
 }
 
 
-
 int main(int argc, char *argv[]){
 
     if(argc != 2){
@@ -32,7 +31,6 @@ int main(int argc, char *argv[]){
     }
 
     int degree = atoi(argv[1]);
-
 
     
     struct timespec init_start, init_end, serial_start, serial_end;
@@ -51,7 +49,6 @@ int main(int argc, char *argv[]){
         fprintf(stderr, "Memory allocation failed\n");
         return 1;
     }
-
     
     // Initialize polynomials with random coefficients
     struct timespec ts;
@@ -110,7 +107,7 @@ int main(int argc, char *argv[]){
 
     // stop serial algorithm timing
     clock_gettime(CLOCK_MONOTONIC, &serial_end);
-        // start parallel algorithm timing
+    // start parallel algorithm timing
     clock_gettime(CLOCK_MONOTONIC, &simd_start);
 
     int* poly2_rev = malloc((degree+1)*sizeof(int));
@@ -140,7 +137,7 @@ int main(int argc, char *argv[]){
             __m256i b = _mm256_loadu_si256((__m256i*)&poly2_rev[degree - k+i]);
 
             // result is saved in 64 bit numbers to avoid overflow, so we cannot have all the results
-            // at least in avx2 technology
+            // -- at least in avx2 technology --
            __m256i prod_even = _mm256_mul_epi32(a, b);
 
            __m256i a_odd = _mm256_srli_si256(a, 4);
@@ -151,10 +148,11 @@ int main(int argc, char *argv[]){
            vec_sum = _mm256_add_epi64(vec_sum, prod_odd);
  
         }
+        // horizontal sum of vec_sum
         __m128i hi128 = _mm256_extracti128_si256(vec_sum, 1);
         __m128i lo128 = _mm256_castsi256_si128(vec_sum);
         __m128i sum128 = _mm_add_epi64(hi128, lo128);
-        // sum of 4 lanes
+        // now we have 2 int64_t in sum128, we need to sum them up
         int64_t final_vec_sum[2];
         _mm_storeu_si128((__m128i*)final_vec_sum, sum128);
         sum = final_vec_sum[0] + final_vec_sum[1];

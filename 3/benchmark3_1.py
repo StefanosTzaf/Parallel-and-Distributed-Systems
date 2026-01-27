@@ -20,7 +20,7 @@ OUT_DIR = ROOT / "bench_results"
 OUT_DIR.mkdir(exist_ok=True)
 
 # Degrees to test
-DEGREES = [10_000, 100_000, 500_000]
+DEGREES = [10_000, 20_000, 50_000, 100_000, 200_000]
 
 # skip serial computation
 SKIP_SERIAL = {500_000}
