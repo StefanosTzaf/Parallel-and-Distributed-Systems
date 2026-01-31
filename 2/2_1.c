@@ -107,9 +107,9 @@ int main(int argc, char *argv[]){
     parallel_start = omp_get_wtime();
 
     #pragma omp parallel for num_threads(threads_num) schedule(guided) default(none) shared(poly1, poly2, parallel_result, degree, result_size)
-        for(int k = 0; k < result_size; k++) {
-            __int128_t sum = 0;
-            
+    for(int k = 0; k < result_size; k++) {
+        __int128_t sum = 0;
+        
             int i_start = (k - degree) > 0 ? (k - degree) : 0;
             int i_end = (k < degree) ? k : degree;
             
@@ -118,6 +118,7 @@ int main(int argc, char *argv[]){
             }
             
             parallel_result[k] = sum;
+            printf("Thread %d starting computation.\n", omp_get_thread_num());
         }
 
 
