@@ -6,6 +6,12 @@
 ![MPI](https://img.shields.io/badge/MPI-007D9C?style=for-the-badge&logo=mpi&logoColor=white)
 ![NVIDIA](https://img.shields.io/badge/CUDA-76B900?style=for-the-badge&logo=nvidia&logoColor=white)
 
+## Acknowledgments & Academic Context
+
+This repository was created as part of the "Parallel Systems" course at the Department of Informatics and Telecommunications, National and Kapodistrian University of Athens (NKUA).
+
+Teamwork: The projects in 01_Pthreads and 02_OpenMP_Sparse_Matrices were developed collaboratively with Εleftheria Galiatsatou - https://github.com/eeeleftheria.
+
 ## 📌 Overview
 This repository contains a collection of algorithms and systems built to demonstrate **High-Performance Computing (HPC)** concepts. The projects focus on optimizing performance and execution time through parallel processing, distributed memory architectures, and hardware acceleration.
 
@@ -48,3 +54,6 @@ Hardware-level acceleration techniques.
 
 ## 🚀 How to Run
 Each directory contains its own `Makefile`. Navigate to the specific project folder and compile the code using `make`.
+
+## Extra README Files and reports
+In every folder there is a readme file that describes the problem and gives details about the compilation and execution of the code. Additionally, there are reports that analyze the results of the benchmarks and provide insights into the performance of the algorithms.
