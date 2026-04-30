@@ -28,24 +28,24 @@ The implementations cover a range of synchronization techniques, lock management
 
 ## 📂 Repository Structure
 
-### `01_Pthreads_Multithreading`
+### [`01_Pthreads_Multithreading`](./01_Pthreads_Multithreading/README.md)
 Explores basic multi-threading and synchronization mechanisms.
 * Polynomial multiplication (Serial vs. Parallel).
 * Race condition handling using Mutexes, Read-Write locks, and Atomic operations.
 * Custom implementations of thread Barriers (Condition Variables & Sense-reversal centralized barriers).
 
-### `02_OpenMP_Sparse_Matrices`
+### [`02_OpenMP_Sparse_Matrices`](./02_OpenMP_Sparse_Matrices/README.md)
 Focuses on shared-memory parallelism and memory optimization.
 * Implementation of the **Compressed Sparse Row (CSR)** format.
 * Parallel Sparse Matrix-Vector Multiplication.
 * Parallel Merge Sort utilizing OpenMP tasks.
 
-### `03_MPI_Distributed_Processing`
+### [`03_MPI_Distributed_Processing`](./03_MPI_Distributed_Processing/README.md)
 Scales computation across multiple nodes using distributed memory.
 * Distributed Polynomial Multiplication.
 * Distributed Sparse Matrix-Vector Multiplication (CSR) across MPI processes.
 
-### `04_CUDA_SIMD_Acceleration`
+### [`04_CUDA_SIMD_Acceleration`](./04_CUDA_SIMD_Acceleration/README.md)
 Hardware-level acceleration techniques.
 * Vectorized operations using SIMD instructions.
 * GPU acceleration using CUDA for simulation tasks (Maxwell's Equations simulator).
